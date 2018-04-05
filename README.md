@@ -11,15 +11,7 @@ screenshot
 
 dependency
 ----------
-- [`VTK`](http://www.vtk.org/), on Ubuntu, you can install it via `apt`: `$ sudo apt-get install python-vtk`. 
-- [`Qt`](http://qt-project.org/)
-- mayavi
-- numpy, scipy
-- PySide
-- pynifti
-- ansicolors
-
-You can install the required python packages via `$ pip install -r requirements.txt`
+Please see the environment.yml file for the necessary packages.
 
 
 usage
@@ -35,3 +27,4 @@ The software is licensed under GPLv2 for **non-commercial** usage. Please contac
 authors
 -------
 Zhongtian (Falcon) Dai
+Edited by: Michael Leibbrand
