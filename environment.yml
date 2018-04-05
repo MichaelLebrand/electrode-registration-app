@@ -1,4 +1,4 @@
-name: testEnv
+name: electrode-registration-app
 channels:
 - auto
 - conda-forge
