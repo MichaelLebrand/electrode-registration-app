@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'mainwindow.ui'
 #
-# Created: Fri Mar 30 10:14:36 2018
+# Created: Tue Mar 27 11:43:48 2018
 #      by: pyside-uic 0.2.15 running on PySide 1.2.2
 #
 # WARNING! All changes made in this file will be lost!
@@ -82,20 +82,13 @@ class Ui_MainWindow(object):
         self.groupBox_2.setObjectName("groupBox_2")
         self.gridLayout_3 = QtGui.QGridLayout(self.groupBox_2)
         self.gridLayout_3.setObjectName("gridLayout_3")
-        self.spinBox_iterations = QtGui.QSpinBox(self.groupBox_2)
-        self.spinBox_iterations.setMinimum(1)
-        self.spinBox_iterations.setMaximum(20)
-        self.spinBox_iterations.setObjectName("spinBox_iterations")
-        self.gridLayout_3.addWidget(self.spinBox_iterations, 0, 2, 1, 1)
-        self.pushButton_dilate = QtGui.QPushButton(self.groupBox_2)
-        self.pushButton_dilate.setObjectName("pushButton_dilate")
-        self.gridLayout_3.addWidget(self.pushButton_dilate, 0, 0, 1, 1)
-        self.pushButton_erode = QtGui.QPushButton(self.groupBox_2)
-        self.pushButton_erode.setObjectName("pushButton_erode")
-        self.gridLayout_3.addWidget(self.pushButton_erode, 0, 1, 1, 1)
-        self.label_13 = QtGui.QLabel(self.groupBox_2)
-        self.label_13.setObjectName("label_13")
-        self.gridLayout_3.addWidget(self.label_13, 0, 3, 1, 1)
+        self.horizontalSlider_threshold_3 = QtGui.QSlider(self.groupBox_2)
+        self.horizontalSlider_threshold_3.setOrientation(QtCore.Qt.Horizontal)
+        self.horizontalSlider_threshold_3.setObjectName("horizontalSlider_threshold_3")
+        self.gridLayout_3.addWidget(self.horizontalSlider_threshold_3, 0, 0, 1, 1)
+        self.spinBox_threshold_3 = QtGui.QSpinBox(self.groupBox_2)
+        self.spinBox_threshold_3.setObjectName("spinBox_threshold_3")
+        self.gridLayout_3.addWidget(self.spinBox_threshold_3, 0, 1, 1, 1)
         self.verticalLayout.addWidget(self.groupBox_2)
         self.pushButton_preview_threshold = QtGui.QPushButton(self.frame_segment)
         self.pushButton_preview_threshold.setObjectName("pushButton_preview_threshold")
@@ -462,11 +455,7 @@ class Ui_MainWindow(object):
         self.groupBox.setToolTip(QtGui.QApplication.translate("MainWindow", "lower bound on a connected component\'s CT intensity", None, QtGui.QApplication.UnicodeUTF8))
         self.groupBox.setTitle(QtGui.QApplication.translate("MainWindow", "Threshold", None, QtGui.QApplication.UnicodeUTF8))
         self.groupBox_2.setToolTip(QtGui.QApplication.translate("MainWindow", "lower bound on a connected component\'s CT intensity", None, QtGui.QApplication.UnicodeUTF8))
-        self.groupBox_2.setTitle(QtGui.QApplication.translate("MainWindow", "Dilate/Erode CT Mask", None, QtGui.QApplication.UnicodeUTF8))
-        self.spinBox_iterations.setToolTip(QtGui.QApplication.translate("MainWindow", "Set the amount of iterations for the dilation/erosion algorithm.", None, QtGui.QApplication.UnicodeUTF8))
-        self.pushButton_dilate.setText(QtGui.QApplication.translate("MainWindow", "Dilate", None, QtGui.QApplication.UnicodeUTF8))
-        self.pushButton_erode.setText(QtGui.QApplication.translate("MainWindow", "Erode", None, QtGui.QApplication.UnicodeUTF8))
-        self.label_13.setText(QtGui.QApplication.translate("MainWindow", "Iterations", None, QtGui.QApplication.UnicodeUTF8))
+        self.groupBox_2.setTitle(QtGui.QApplication.translate("MainWindow", "Distance", None, QtGui.QApplication.UnicodeUTF8))
         self.pushButton_preview_threshold.setText(QtGui.QApplication.translate("MainWindow", "View Preview", None, QtGui.QApplication.UnicodeUTF8))
         self.pushButton_hide_preview.setText(QtGui.QApplication.translate("MainWindow", "Hide Preview", None, QtGui.QApplication.UnicodeUTF8))
         self.label_12.setText(QtGui.QApplication.translate("MainWindow", "Segmentation", None, QtGui.QApplication.UnicodeUTF8))

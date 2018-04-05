@@ -1,4 +1,4 @@
-# description: GUI application to interactively segment and register 
+# description: GUI application to interactively segment and register
 # ECoG electrodes with post-implant CT and pre-implant MRI
 #
 # Copyright (C) 2014 Zhongtian Dai
@@ -20,6 +20,7 @@
 
 import sys, os, traceback, json, csv
 from os import path
+import copy
 
 os.environ['ETS_TOOLKIT'] = 'qt4'
 
@@ -38,13 +39,14 @@ from tvtk.api import tvtk
 import mayavi
 from mayavi.modules.api import Outline, Text3D, Glyph
 
-from core import io, estimate, register
+from core import io, estimate, register, utils, projElectrodes
 import numpy as np
 from scipy import ndimage, spatial
 from sklearn import cluster
+import nibabel as nib
+from scipy.ndimage import morphology as morph
 
 from helper import *
-
 
 class Visualization(HasTraits):
     scene = Instance(MlabSceneModel, ())
@@ -94,23 +96,24 @@ class ComponentItem(object):
     register_method_color = {}
     editable = {
         'grid_label': {
-            'display': 'grid label', 
-            'set': lambda x: x.upper(), 
+            'display': 'grid label',
+            'set': lambda x: x.upper(),
         },
         'grid_id': {
             'display': 'grid id',
-            'set': lambda x: int(x) if x.strip().isdigit() else None, 
+            'set': lambda x: int(x) if x.strip().isdigit() else None,
         },
         'channel_number': {
             'display': 'channel',
-            'set': lambda x: int(x) if x.strip().isdigit() else None, 
+            'set': lambda x: int(x) if x.strip().isdigit() else None,
         },
     }
+    os.chdir('/home/michael/PycharmProjects/electrodesthingy/electrode-registration-app')
     grid_color_lut = map(lambda rgb: tuple(map(lambda x: x / 255., rgb)), json.load(open('app/brewer-qualitative.strong.12.json')))
     grid_labels = []
 
-    def __init__(self, name, voxel, transform, 
-                 source, surface, outline=None, text=None, 
+    def __init__(self, name, voxel, transform,
+                 source, surface, outline=None, text=None,
                  is_electrode=True,
                  register_method=None, register_position=None, register_dura_vertex_id=None,
                  channel_number=None, grid_label=None, grid_id=None,
@@ -137,12 +140,12 @@ class ComponentItem(object):
         # for tree structure
         self.parent = parent
         self.children = []
-    
+
     @property
     def points(self):
         ijks = np.asarray(np.nonzero(self.voxel))
         return self.transform[:3, :3].dot(ijks) + self.transform[:3, 3:]
-    
+
     @property
     def centroid(self):
         c = ndimage.measurements.center_of_mass(self.voxel)
@@ -158,8 +161,8 @@ class ComponentItem(object):
 
         if len(self._grid_label) == 0:
             # TODO use some gray default color (BW -> colored)
-            self.surface.actor.mapper.scalar_visibility = True            
-            return 
+            self.surface.actor.mapper.scalar_visibility = True
+            return
 
         if self.text and self.grid_id:
             self.text.text = '    %s %d' % (self.grid_label, self.grid_id)
@@ -233,7 +236,7 @@ class ComponentItem(object):
 
 class PointComponentItem(ComponentItem):
     def __init__(self, name, xyz,
-                 source, surface, outline=None, text=None, 
+                 source, surface, outline=None, text=None,
                  is_electrode=True,
                  register_method=None, register_position=None, register_dura_vertex_id=None,
                  channel_number=None, grid_label=None, grid_id=None,
@@ -273,15 +276,15 @@ class ComponentModel(QtCore.QAbstractItemModel):
     def __init__(self):
         super(ComponentModel, self).__init__(None)
         self.root_item = ComponentItem(None, None, None, None, None, register_position=(0,0,0), is_electrode=False)
-        
+
     def index(self, row, column, parent=QtCore.QModelIndex()):
         if not self.hasIndex(row, column, parent):
             return QtCore.QModelIndex()
-        
+
         parent_item = self.root_item
         if parent.isValid():
             parent_item = parent.internalPointer()
-        
+
         child_item = parent_item.child(row)
         if child_item:
             index = self.createIndex(row, column, child_item)
@@ -293,7 +296,7 @@ class ComponentModel(QtCore.QAbstractItemModel):
     def parent(self, index):
         if not index.isValid():
             return QtCore.QModelIndex()
-            
+
         child_item = index.internalPointer()
         parent_item = child_item.parent
 
@@ -355,9 +358,9 @@ class ComponentModel(QtCore.QAbstractItemModel):
     def itemFromIndex(self, index):
         if not index.isValid():
             return self.root_item
-        
+
         return index.internalPointer()
-        
+
     def hasChildren(self, index):
         item = self.root_item
         if index.isValid():
@@ -367,14 +370,14 @@ class ComponentModel(QtCore.QAbstractItemModel):
 
 
 class FlattenTreeProxyModel(QtGui.QAbstractProxyModel):
-    '''implements a pre-order traversal of a tree-like model to 
+    '''implements a pre-order traversal of a tree-like model to
     flatten the index for a list-like model'''
 
     def __init__(self):
         super(FlattenTreeProxyModel, self).__init__()
         self.list_to_tree = {}
         self.tree_to_list = {}
-    
+
     def build_index_maps(self):
         self.layoutAboutToBeChanged.emit()
         self.list_to_tree = {}
@@ -403,7 +406,7 @@ class FlattenTreeProxyModel(QtGui.QAbstractProxyModel):
         #import pdb; pdb.set_trace()
         self.layoutChanged.emit()
 
-        
+
     def serialize_tree_index(self, tree_index):
         i = tree_index
         rs = []
@@ -457,7 +460,7 @@ class FlattenTreeProxyModel(QtGui.QAbstractProxyModel):
         r = self.inflate_tree_index(self.list_to_tree[row], column)
         if r.isValid():
             return self.mapFromSource(r)
- 
+
         return QtCore.QModelIndex()
 
 
@@ -486,18 +489,20 @@ def open_project():
 @QtCore.Slot()
 def save_project():
     fn, t = QtGui.QFileDialog.getSaveFileName(caption='Save a project...', dir='untitled.prj')
-    
+
 
 class Application(object):
     # data source
     ct = None
-    ct_path = '/home/vtowle/source/sample/emily/ct.hdr'
+    ct_path = '/home/michael/Documents/Subjects/DY_043_AL/CT/rCT.nii'
     dura = None
-    dura_path = '/home/vtowle/source/sample/emily/lh.dura'
+    dura_path = '/home/michael/Documents/Subjects/DY_043_AL/surf/rh.dural'
+    mask_path = '/home/michael/Documents/Subjects/DY_043_AL/mri/brainmask.mgz'
+
     # optional
     pial = None
-    pial_path = None
-    
+    pial_path = '/home/michael/Documents/Subjects/DY_043_AL/surf/rh.pial'
+
     # data
     ct_volume = None
     dura_vertices = None
@@ -518,7 +523,7 @@ class Application(object):
     dura_fig = None
     dura_surf = None
     pial_fig = None
-    
+
     # processing state
     stages =  ['initial', 'data loaded', 'segmented']
     current_stage = stages[0]
@@ -531,7 +536,7 @@ class Application(object):
     #segment_model = QtGui.QStandardItemModel()
     segment_model = ComponentModel()
     segment_selection_model = None
-    
+
     # UI states
     modes = ['free', 'manual add', 'manual register']
     mode = 'free'
@@ -541,7 +546,7 @@ class Application(object):
     config_path = path.join(config_dir, 'electrode_registration.config.json')
 
     def __init__(self, ui, mlab, config=None):
-        # load configurations 
+        # load configurations
         if not path.exists(self.config_dir):
             debug('configuration directory %s does not exist' % self.config_dir)
             os.mkdir(self.config_dir)
@@ -551,10 +556,10 @@ class Application(object):
             with open(self.config_path, 'rb') as f:
                 # set up parameters from config json
                 debug(json.load(f))
-        
+
         self.mlab = mlab
         self.ui = ui
-        
+
         # wire up the GUI
         ui.actionOpen.triggered.connect(self.open_ct_dura)
         # segment panel slider + spinbox
@@ -564,13 +569,16 @@ class Application(object):
         ui.doubleSpinBox_size.valueChanged.connect(lambda x: ui.horizontalSlider_size.setValue(x * 10.))
         ui.pushButton_segment.clicked.connect(self.segment)
         ui.pushButton_preview_threshold.clicked.connect(self.preview_threshold)
-        ui.actionOpenPial.triggered.connect(self.open_pial)
+        ui.pushButton_dilate.clicked.connect(self.dilate_ct)
+        ui.pushButton_erode.clicked.connect(self.erode_ct)
+        # ui.actionOpenPial.triggered.connect(self.open_pial)
+        ui.actionShowPial.triggered.connect(self.show_pial)
         ui.actionHideThresholdingPreview.triggered.connect(self.hide_preview)
 
         # set up mlab figure
         self.fig = mlab.gcf()
         self.engine = mlab.get_engine()
-    
+
         # edit tab
         ui.treeView_edit.setModel(self.segment_model)
         # show only the first column
@@ -589,10 +597,10 @@ class Application(object):
         self.register_model.setSourceModel(self.segment_model)
         ui.pushButton_nearest.clicked.connect(self.do_register_nearest)
         ui.pushButton_principal.clicked.connect(self.do_register_principal_axis)
-        ui.pushButton_svd.clicked.connect(self.do_register_svd)
+        ui.pushButton_svd.clicked.connect(self.do_register_radius)
         ui.pushButton_manual.toggled.connect(self.do_register_manual)
         ui.pushButton_unregister.clicked.connect(self.unregister)
-       
+
         # label tab
         self.label_model = QtGui.QSortFilterProxyModel()
         self.label_model.setSourceModel(self.register_model)
@@ -602,11 +610,13 @@ class Application(object):
         # advanced menu
         ui.actionExport_segmentation_dataset.triggered.connect(self.export_segmentation_dataset)
 
+        self.load_pial()
+
 
     @classmethod
     def from_dict(cls, obj):
         pass
-        
+
     def to_dict(self):
         pass
 
@@ -621,33 +631,38 @@ class Application(object):
             warn('no existing thresholding preview')
 
     @QtCore.Slot()
-    def open_pial(self):
-        info('open pial mesh')
-        fn, t = QtGui.QFileDialog.getOpenFileName(caption='Open Pial Mesh...', 
-                                                  filter='Pial File (*.pial);; Any File (*)', 
-                                                  options=QtGui.QFileDialog.DontUseNativeDialog)
-        if fn:
-            info('reading pial mesh from %s' % fn)
-            try:
-                self.pial = read_surface(fn)
-                vs, fs, m = self.pial
-                x, y, z = vs.T
-                
-                if self.pial_fig:
-                    self.pial_fig.remove()
-                    info('removed existing pial mesh')
+    def load_pial(self):
+        fn = self.pial_path
+        info('reading pial mesh from %s' % fn)
+        try:
+            self.pial = read_surface(fn)
+            vs, fs, m = self.pial
+            self.surf2ras = m
+        except:
+            err('failed to read pial')
+            print_traceback()
 
-                source = self.mlab.pipeline.triangular_mesh_source(x, y, z, fs)
-                transform_filter = build_transform_filter(self.mlab, source, m)
-                normal_filter = self.mlab.pipeline.poly_data_normals(transform_filter)
-                normal_filter.filter.feature_angle = 80.
+    def show_pial(self):
+        self.load_pial()
+        if self.pial_fig:
+            self.pial_fig.remove()
+            info('removed existing pial mesh')
+            self.pial_fig = None
+        else:
+            vs, fs, m = self.pial
+            x, y, z = vs.T
 
-                surface = self.mlab.pipeline.surface(normal_filter, color=(0.8, 0.8, 0.8))
-                self.pial_fig = source
-                self.pial_path = fn
-            except:
-                err('failed to read pial')
-                print_traceback()
+            if self.pial_fig:
+                self.pial_fig.remove()
+                info('removed existing pial mesh')
+
+            source = self.mlab.pipeline.triangular_mesh_source(x, y, z, fs)
+            transform_filter = build_transform_filter(self.mlab, source, self.surf2ras)
+            normal_filter = self.mlab.pipeline.poly_data_normals(transform_filter)
+            normal_filter.filter.feature_angle = 80.
+
+            surface = self.mlab.pipeline.surface(normal_filter, color=(0.8, 0.8, 0.8))
+            self.pial_fig = source
 
     @QtCore.Slot()
     def open_ct_dura(self):
@@ -660,11 +675,13 @@ class Application(object):
             dialog_ui.duraLineEdit.setText(self.dura_path)
         if self.ct_path:
             dialog_ui.ctLineEdit.setText(self.ct_path)
+        if self.mask_path:
+            dialog_ui.maskLineEdit.setText(self.mask_path)
 
         # set up file dialogs
         ct_file_dialog = QtGui.QFileDialog()
         ct_file_dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
-        ct_file_dialog.setNameFilters(['NIfTI File (*.img *.hdr *.nii)', 'Any file (*)'])
+        ct_file_dialog.setNameFilters(['NIfTI File (*.nii)', 'Any file (*)'])
         dialog_ui.ctPushButton.clicked.connect(ct_file_dialog.exec_)
         ct_file_dialog.fileSelected.connect(dialog_ui.ctLineEdit.setText)
 
@@ -673,28 +690,37 @@ class Application(object):
 
         dura_file_dialog = QtGui.QFileDialog()
         dura_file_dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
-        dura_file_dialog.setNameFilters(['Dura File (*.dura *.pial-outer-smoothed)', 'Any File (*)'])
+        dura_file_dialog.setNameFilters(['Any File (*)'])
         dialog_ui.duraPushButton.clicked.connect(dura_file_dialog.exec_)
         dura_file_dialog.fileSelected.connect(dialog_ui.duraLineEdit.setText)
 
+
+        mask_file_dialog = QtGui.QFileDialog()
+        mask_file_dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
+        mask_file_dialog.setNameFilters(['Image File (*.mgz *.nii)', 'Any file (*)'])
+        dialog_ui.maskPushButton.clicked.connect(mask_file_dialog.exec_)
+        mask_file_dialog.fileSelected.connect(dialog_ui.maskLineEdit.setText)
+
+
         def validate():
             '''validate the CT and dura paths input'''
-            if dialog_ui.ctLineEdit.text() != '' and dialog_ui.duraLineEdit.text() != '':
+            if dialog_ui.ctLineEdit.text() != '' and dialog_ui.duraLineEdit.text() != '' and dialog_ui.maskLineEdit.text() != '':
                 dialog.accept()
             else:
-                QtGui.QErrorMessage(dialog).showMessage('Both CT and dura are required.')
-                err('both CT and dura paths are needed.')
-        
+                QtGui.QErrorMessage(dialog).showMessage('Both CT, mask and dura are required.')
+                err('Make sure all paths are valid.')
+
         dialog_ui.buttonBox.accepted.connect(validate)
 
         # show file dialog
         if QtGui.QDialog.Accepted == dialog.exec_():
             info('read CT and dura paths')
-            self.read_ct_dura(dialog_ui.ctLineEdit.text(), dialog_ui.duraLineEdit.text())
+            self.read_ct_dura(dialog_ui.ctLineEdit.text(), dialog_ui.duraLineEdit.text(), dialog_ui.maskLineEdit.text())
 
-    def read_ct_dura(self, ct_path, dura_path):
+    def read_ct_dura(self, ct_path, dura_path, mask_path):
         info('reading CT from %s' % ct_path)
         info('reading dura mesh from %s' % dura_path)
+        info('reading brainmask from %s' % mask_path)
         try:
             try:
                 del self.preview_contour_filter
@@ -703,22 +729,41 @@ class Application(object):
                 debug('removed threshold preview')
             except:
                 debug('no threshold preview to remove')
-            
+
             # load CT and dura
-            self.ct = io.read_nifti(ct_path)
+            self.ct_orig = io.read_nifti(ct_path)
             self.dura = read_surface(dura_path)
-            
+            if '.mgz' in mask_path:
+                mask_ni = mask_path.strip('.mgz') + '.nii'
+                if not os.path.isfile(mask_ni):
+                    os.system('mri_convert %s %s' % (mask_path, mask_ni ))
+
+                self.brainmask = io.read_nifti(mask_ni)
+            else:
+                self.brainmask = io.read_nifti(mask_path)
+
             # replace paths
             self.ct_path = ct_path
             self.dura_path = dura_path
+            self.mask_path = mask_path
 
-            self.dura_vertices, self.dura_faces, mc = self.dura 
+            self.dura_vertices, self.dura_faces, mc = self.dura
             x, y, z = self.dura_vertices.T
 
-            self.ct_volume = self.ct.getDataArray()
+            # put brainmask over CT to get rid of excess voxels
+            ct_orig = self.ct_orig.get_data()
+            ctDataMasked = copy.deepcopy(ct_orig)
+            maskData = self.brainmask.get_data()
+            outOfBounds = maskData <= 0
+            ctDataMasked[outOfBounds] = 0
+
+            # set masked CT and masked CT volume
+            self.ct = nib.Nifti1Image(ctDataMasked, self.ct_orig._affine, self.ct_orig.header)
+            self.ct_volume = ctDataMasked
 
             info('loaded CT')
             info('loaded dura mesh')
+            info('masked CT')
 
             # update panel parameters
             debug('updating panel parameters')
@@ -726,7 +771,7 @@ class Application(object):
             debug('CT maximum intensity is %d' % ct_max)
             self.ui.spinBox_threshold.setMaximum(ct_max)
             self.ui.horizontalSlider_threshold.setMaximum(ct_max)
-
+            
 
             # set default segmentation parameters
             debug('setting default segmentation parameters')
@@ -739,7 +784,7 @@ class Application(object):
             self.ui.frame_segment_config.setEnabled(True)
             self.ui.pushButton_segment.setEnabled(True)
             debug('enabled panels')
-            
+
             # draw dura
             try:
                 # remove existing CT and dura figures if any
@@ -751,7 +796,7 @@ class Application(object):
                     self.dura_fig.remove()
                     info('removed previous dura mesh figure')
                 source = self.mlab.pipeline.triangular_mesh_source(x, y, z, self.dura_faces)
-                transform_filter = build_transform_filter(self.mlab, source, mc)
+                transform_filter = build_transform_filter(self.mlab, source, self.surf2ras)
                 normal_filter = self.mlab.pipeline.poly_data_normals(transform_filter)
                 surface = self.mlab.pipeline.surface(normal_filter, color=(0.8, 0.8, 0.8), opacity=0.5)
                 self.dura_fig = source
@@ -764,7 +809,115 @@ class Application(object):
             err('failed to load CT and dura mesh')
             print_traceback()
 
-    
+
+    def dilate_ct(self):
+        '''
+        Allows for the dilation of the scope of the voxels represented by the CT image.
+        Works with the image morphology kit which allows for binary dilation/erosion.
+
+        '''
+        mlab = self.mlab
+        threshold = self.ui.spinBox_threshold.value()
+        ct = self.ct_orig.get_data()
+        iterations = self.ui.spinBox_iterations.value()
+        info('dilating CT with %d iterations' % iterations)
+
+        # allow for dilation/erosion of brainmask
+        ctDataMasked = self.ct.get_data()
+        iterations = self.ui.spinBox_iterations.value()
+
+        for i in range(iterations):
+            ctDataMasked = morph.binary_dilation(ctDataMasked)
+            ctDataFilled = morph.binary_fill_holes(ctDataMasked)
+            ctDataMasked = copy.copy(ctDataFilled)
+
+        ctDilated = copy.copy(ct)
+        ctDilated[~ctDataMasked] = 0
+
+        # remove CT data an replace with dilated CT
+        if self.ct:
+            self.ct = None
+
+        self.ct = nib.Nifti1Image(ctDilated, self.ct_orig._affine, self.ct_orig.header)
+
+        # update mayavi view options
+        img = ctDilated
+        source = mlab.pipeline.scalar_field(img)
+        contour_filter = mlab.pipeline.contour(source)
+        contour_filter.filter.contours = [threshold]
+        transform_filter = build_transform_filter(mlab, contour_filter, self.ct_orig.get_sform())
+
+        normal_filter = mlab.pipeline.poly_data_normals(transform_filter)
+        surface = mlab.pipeline.surface(normal_filter, color=(0.2, 0.9, 0.4))
+        # register the contour filter to application
+        self.preview_contour_filter = contour_filter
+        self.preview_contour_surface = surface
+
+        if self.ct_fig:
+            self.ct_fig.remove()
+            self.ct_fig = None
+            info('CT figure removed')
+
+        self.ct_fig = source
+
+        # maskedCT = nib.Nifti1Image(ctDilated, self.ct_orig._affine, self.ct_orig.header)
+        # nib.save(maskedCT, '/home/michael/Documents/Subjects/DY_043_AL/CT/maskedCTDilated_1.nii')
+
+    def erode_ct(self):
+        '''
+        Allows for the erosion of the scope of the voxels represented by the CT image.
+        Works with the image morphology kit which allows for binary dilation/erosion.
+
+        '''
+
+        mlab = self.mlab
+        threshold = self.ui.spinBox_threshold.value()
+        ct = self.ct_orig.get_data()
+        iterations = self.ui.spinBox_iterations.value()
+        info('eroding CT with %d iterations' % iterations)
+
+        # allow for dilation/erosion of brainmask
+        ctDataMasked = self.ct.get_data()
+        iterations = self.ui.spinBox_iterations.value()
+
+        for i in range(iterations):
+            ctDataMasked = morph.binary_erosion(ctDataMasked)
+            ctDataFilled = morph.binary_fill_holes(ctDataMasked)
+            ctDataMasked = copy.copy(ctDataFilled)
+
+        ctEroded = copy.copy(ct)
+        ctEroded[~ctDataMasked] = 0
+
+        # reset CT data and replace with eroded CT
+        if self.ct:
+            self.ct = None
+
+        self.ct = nib.Nifti1Image(ctEroded, self.ct_orig._affine, self.ct_orig.header)
+
+        # update mayavi view options
+        img = ctEroded
+        source = mlab.pipeline.scalar_field(img)
+        contour_filter = mlab.pipeline.contour(source)
+        contour_filter.filter.contours = [threshold]
+        transform_filter = build_transform_filter(mlab, contour_filter, self.ct_orig.get_sform())
+
+        normal_filter = mlab.pipeline.poly_data_normals(transform_filter)
+        surface = mlab.pipeline.surface(normal_filter, color=(0.2, 0.9, 0.4))
+        # register the contour filter to application
+        self.preview_contour_filter = contour_filter
+        self.preview_contour_surface = surface
+
+        if self.ct_fig:
+            self.ct_fig.remove()
+            self.ct_fig = None
+            info('CT figure removed')
+
+        self.ct_fig = source
+
+        # maskedCT = nib.Nifti1Image(ctEroded, self.ct_orig._affine, self.ct_orig.header)
+        # nib.save(maskedCT, '/home/michael/Documents/Subjects/DY_043_AL/CT/maskedCTEroded_1.nii')
+
+
     def preview_threshold(self):
         mlab = self.mlab
         ct = self.ct
@@ -778,15 +931,18 @@ class Application(object):
         except AttributeError:
             # the contour filter is not present, create the
             # whole pipeline
-            
-            img = ct.getDataArray().T
+
+            img = ct.get_data()
+
             #ndimage.gaussian_filter(img, 0.5, output=img)
             source = mlab.pipeline.scalar_field(img)
-            
+
             contour_filter = mlab.pipeline.contour(source)
             contour_filter.filter.contours = [threshold]
 
-            transform_filter = build_transform_filter(mlab, contour_filter, ct.getSForm())
+            # dataFilter = mlab.pipeline.cut_plane(contour_filter)
+
+            transform_filter = build_transform_filter(mlab, contour_filter, ct.get_sform())
 
             normal_filter = mlab.pipeline.poly_data_normals(transform_filter)
             surface = mlab.pipeline.surface(normal_filter, color=(0.2, 0.9, 0.4))
@@ -797,7 +953,7 @@ class Application(object):
         info('completed CT intensity threshold preview')
         debug('enable hide preview button')
         self.ui.pushButton_hide_preview.setEnabled(True)
-    
+
 
     @wrap_get_set_view
     def segment(self):
@@ -813,26 +969,27 @@ class Application(object):
             self.segment_distance_threshold = distance
             info('thresholding on CT intensity value at %d...' % threshold)
 
-            ct_high = np.asarray(np.where(threshold <= self.ct.getDataArray().T, True, False), 'i1')
+            ct_high = np.asarray(np.where(threshold <= self.ct.get_data(), True, False), 'i1')
             #info('done thresholding on CT intensity value')
             labels = ndimage.label(ct_high)[0]
             slices = ndimage.find_objects(labels)
             info('found %d connected components' % len(slices))
 
             info('done thresholding CT')
-            sf = self.ct.getSForm()
-            dv = np.product(self.ct.getVoxDims())
-            debug('vox dims %r, dv = %f' % (self.ct.getVoxDims(), dv))
+            sf = self.ct.get_sform()
+            # set dv to 1 (mm), voxel size is based on isometric 1x1x1 CT image
+            dv = 1 #np.product(self.ct.get_shape())
+            debug('vox dims %r, dv = %f' % (self.ct.get_shape(), dv))
 
             debug('building KD-tree of %d dura vertices' % len(self.dura_vertices))
-            self.dura_vertices_kdtree = spatial.cKDTree(self.dura_vertices + self.dura[2][:3, 3:].T)
+            self.dura_vertices_kdtree = spatial.cKDTree(self.dura_vertices + self.surf2ras[:3, 3:].T)
 
             info('segmenting electrodes')
             #self.component_figs = []
             #root = self.segment_model.invisibleRootItem()
             root = self.segment_model.root_item
             n = 0
-            
+
             #view = self.get_view()
 
             for i, s in enumerate(slices):
@@ -842,23 +999,40 @@ class Application(object):
                 distance, index = self.dura_vertices_kdtree.query(bb_center[:, 0])
                 voxel = np.asarray(np.where(labels[slice(bbc0[0], bbc1[0]), slice(bbc0[1], bbc1[1]), slice(bbc0[2], bbc1[2])] == i + 1, 1, 0), 'i1')
                 size = voxel.sum() * dv
-                #debug('component %d' % i)
+                debug('component %d' % i)
                 if self.segment_size_threshold < size and distance < self.segment_distance_threshold:
-                    #debug('component %d, size %.2fmm^3, %.2fmm away from dura, bounded at %r is segmented' % (i, size, distance, s))
+                    debug('component %d, size %.2fmm^3, %.2fmm away from dura, bounded at %r is segmented' % (i, size, distance, s))
                     co = sf[:3, :3].dot(bbc0)
                     m = np.array(sf)
                     m[:3, 3:] += co
                     component = self.create_segment(voxel, m, 'component %d' % n)
+                    component.bb_center = bb_center
                     #component.setEditable(False)
                     root.appendChild(component)
                     # inverse index
                     self.pickable_actors[repr(component.surface.actor.actor)] = component
                     n += 1
+                    xyz = component.centroid
+                    x1, y1, z1 = xyz
+                    color1 = (0.9, 0.9, 0.9)
+                    component.centroidDot = self.mlab.points3d([x1], [y1], [z1], color=color1, scale_factor=1)
+                    component.centroidDot.actor.actor.pickable = 0
+
+                    color2 = (0.9, 0.3, 0.5)
+                    xx, yy, zz = component.points
+                    component.pointsVis = self.mlab.points3d([xx], [yy], [zz], color=color2, scale_factor=1)
+                    component.pointsVis.actor.actor.pickable = 0
+
+                    x2, y2, z2 = component.bb_center
+                    color3 = (0.1, 0.9, 0.1)
+                    component.centroidDot = self.mlab.points3d([x2], [y2], [z2], color=color3, scale_factor=1)
+                    component.centroidDot.actor.actor.pickable = 0
+
 
             info('done segmenting, selected %d out of %d connected components' % (n, len(slices)))
 
             #self.set_view(*view)
-            
+
             debug('add picker callback')
             def pick_callback(picker):
                 for actor in reversed(picker.actors):
@@ -868,7 +1042,7 @@ class Application(object):
                         break
                 else:
                     debug('no component is picked')
-                    return 
+                    return
 
                 self.segment_selection_model.select(target.index, QtGui.QItemSelectionModel.Toggle)
                 self.ui.treeView_edit.scrollTo(target.index)
@@ -916,9 +1090,9 @@ class Application(object):
                 for idx in deselected.indexes():
                     item = self.segment_model.itemFromIndex(idx)
                     self.toggle_component_selection(item, False)
-                
+
             self.segment_selection_model.selectionChanged.connect(segment_model_selection_callback)
-            
+
             info('edit tab enabled')
             self.ui.label_component_count.setText(str(n))
             self.ui.label_register_electrode_count.setText(str(n))
@@ -930,7 +1104,7 @@ class Application(object):
             self.register_model.build_index_maps()
             self.ui.listView_register.setModel(self.register_model)
             self.register_selection_model = self.ui.listView_register.selectionModel()
-            
+
             info('label tab enabled')
             self.ui.tab_label.setEnabled(True)
             self.ui.tableView_label.setModel(self.label_model)
@@ -989,7 +1163,7 @@ class Application(object):
 
         else:
             err('invalid segmentation parameters')
-            QtGui.QErrorMessage(dialog).showMessage('Some segmentation parameters are invalid.')
+            QtGui.QErrorMessage.showMessage('Some segmentation parameters are invalid.')
 
 
     def toggle_component_selection(self, component, select=None):
@@ -1028,7 +1202,7 @@ class Application(object):
             component.rod.visible = False
 
         self.segment_selection_model.select(component.index, QtGui.QItemSelectionModel.Deselect)
-        
+
 
     def remove_segment(self):
         for idx in self.segment_selection_model.selectedIndexes():
@@ -1037,6 +1211,7 @@ class Application(object):
         self.register_model.build_index_maps()
         self.update_electrode_count()
         self.update_register_count()
+        # self.pickable_actors.clear()
         #self.ui.label_electrode_num.setText(str(self.register_model.rowCount(QtCore.QModelIndex())))
 
 
@@ -1104,7 +1279,7 @@ class Application(object):
 
     def split_voxel(self, voxel, n_piece):
         #import pdb; pdb.set_trace()
-        d = self.ct.getVoxDims()
+        d = self.ct.get_shape()
         ijk = np.asarray(np.nonzero(voxel)).T
         xyz = ijk * d
         #debug(xyz)
@@ -1123,7 +1298,7 @@ class Application(object):
         for idx in self.ui.treeView_edit.selectedIndexes():
             component = self.segment_model.itemFromIndex(idx)
             info('splitting %s into %d pieces' % (component.name, n_piece))
-            
+
             ijks, labels = self.split_voxel(component.voxel, n_piece)
             voxel = np.array(component.voxel)
             for l, (i, j, k) in enumerate(ijks):
@@ -1173,8 +1348,8 @@ class Application(object):
         x, y, z = component.centroid.flatten()
         component.text = self.mlab.text3d(x, y, z, '', scale=2.)
         return component
-        
-    
+
+
     def add_electrode(self, xyz, color=(0.3, 0.3, 0.3)):
         x, y, z = xyz
         s = self.mlab.points3d([x], [y], [z], color=color, scale_factor=2.5)
@@ -1193,10 +1368,10 @@ class Application(object):
 
     def register_electrode(self, component, to_position, color=(1., 1., 1.)):
         debug('registering electrode %s to %r' % (component.name, to_position))
-        if component.dot:
-            component.dot.remove()
-        if component.rod:
-            component.rod.remove()
+        # if component.dot:
+        #     component.dot.remove()
+        # if component.rod:
+        #     component.rod.remove()
         # draw dot and rod
         x, y, z = to_position
         component.dot = self.mlab.points3d([x], [y], [z], color=color, scale_factor=2)
@@ -1205,32 +1380,105 @@ class Application(object):
         component.rod = self.mlab.plot3d(xx, yy, zz, color=color, tube_radius=0.5)
         component.rod.actor.actor.pickable = 0
         component.register_position = to_position
-
+        # xyz = component.bb_center
+        x1, y1, z1 = component.bb_center
+        color1 = (0.9, 0.9, 0.9)
+        component.centroidDot = self.mlab.points3d([x1], [y1], [z1], color=color1, scale_factor=1)
+        component.centroidDot.actor.actor.pickable = 0
 
     def register_nearest(self, component):
         c = component.centroid.reshape(-1)
         i = self.dura_vertices_kdtree.query(c)[1]
-        p = self.dura_vertices[i] + self.dura[2][:3, 3:].T
+        p = self.dura_vertices[i] + self.surf2ras[:3, 3:].T
         return i, p[0]
+
+    def get_vertices_radius(self, component, dist = 25):
+        c = component.centroid.reshape(-1)
+        verticesInRadius = self.dura_vertices_kdtree.query_ball_point(c,dist)
+        return verticesInRadius
 
 
     def register_pa(self, component):
         i = estimate.inertia_matrix(component.points.T)
         n = estimate.principal_axis(i)
         ce = component.centroid.reshape(-1)
-        return register.line_surf_intersection(ce, n, self.dura_vertices + self.dura[2][:3, 3:].T)
+        return register.line_surf_intersection(ce, n, self.dura_vertices + self.surf2ras[:3, 3:].T)
 
 
     def register_svd(self, component):
         n = estimate.fit_plane(component.points.T)
         ce = component.centroid.reshape(-1)
-        return register.line_surf_intersection(ce, n, self.dura_vertices + self.dura[2][:3, 3:].T)
+        return register.line_surf_intersection(ce, n, self.dura_vertices + self.surf2ras[:3, 3:].T)
 
 
     def register_manual(self, xyz):
         i = self.dura_vertices_kdtree.query(xyz)[1]
-        p = self.dura_vertices[i] + self.dura[2][:3, 3:].T
+        p = self.dura_vertices[i] + self.surf2ras[:3, 3:].T
         return i, p[0]
+
+    def getNormalsData(self):
+        '''
+        open the ASCII file that contains the surface normals per vertex calculated with "mris_convert -n .."
+        '''
+
+        surfDir, surfaceFile = os.path.split(self.dura_path)
+        self.normalsFile = os.path.join(surfDir, surfaceFile + '.normals')
+        # check if the normal file exists
+        if not os.path.isfile(self.normalsFile):
+            print "Creating normalFile %s" % self.normalsFile
+            os.system('mris_convert -n "%s" "%s"' % (self.dura_path, self.normalsFile))
+
+        f = open(self.normalsFile, 'r')
+        header1 = f.readline()
+        header2 = f.readline()
+        normals = np.ndarray(shape=[self.dura_vertices.shape[0], 3])
+        i = 0
+        for line in f:
+            if i >= self.dura_vertices.shape[0]:
+                break
+            line = line.strip()
+            columns = line.split()
+            normals[i, 0] = float(columns[0])
+            normals[i, 1] = float(columns[1])
+            normals[i, 2] = float(columns[2])
+            i = i + 1
+
+        f.close()
+        return normals
+
+    def get_elecmatrix(self):
+        '''
+        Get the electrode matrix of the centroids of the selected electrodes as an ndarray
+        '''
+        selection = self.register_selection_model.selection()
+        elecmatrix = np.ndarray(shape=(selection.size(),3))
+        i = 0
+        for idx in self.register_selection_model.selectedIndexes():
+            if idx.column() == 0:
+                component = self.segment_model.itemFromIndex(self.register_model.mapToSource(idx))
+                c = component.centroid.reshape(-1)
+                elecmatrix[i] = c
+                i = i + 1
+
+        return elecmatrix
+
+    def get_surfaceNormal(self, component, normals):
+        '''
+        Get the average surfaceNormal from a subset of normals
+        :return: vector (x,y,z)
+        '''
+        vert_idx = self.get_vertices_radius(component, dist = 25)
+        inRange = normals[vert_idx]
+
+        avgNormal = np.zeros([1,3])
+        if inRange.size > 0:
+            avgNormal = inRange.mean(axis=0)
+        else:
+            raise RuntimeError(
+                'No vertices in the radius of the specified normDist. Please increase normDist size or '
+                'inspect data for errors. It could also be you specified the wrong hemisphere.')
+
+        return avgNormal
 
 
     @QtCore.Slot()
@@ -1243,9 +1491,26 @@ class Application(object):
                 dura_id, to_position = self.register_nearest(component)
                 self.register_electrode(component, to_position, color=(0.9, 0.7, 0.2))
                 component.register_method = 'nearest'
-                component.register_dura_vertex_id = dura_id
+                component.register_dura_vertex_id = 100 #dura_id
         self.update_register_count()
 
+
+    @QtCore.Slot()
+    @wrap_get_set_view
+    def do_register_radius(self):
+        info ('registering electrodes with average surface normal')
+         # load normals data from file
+        normals = self.getNormalsData()
+        for idx in self.register_selection_model.selectedIndexes():
+            if idx.column() == 0:
+                component = self.segment_model.itemFromIndex(self.register_model.mapToSource(idx))
+                direction = self.get_surfaceNormal(component,normals)
+                point = component.centroid.reshape(-1)
+                to_position = projElectrodes.projectElectrodes(self.dura_faces,self.dura_vertices + self.surf2ras[:3, 3:].T,point,direction)
+
+                self.register_electrode(component, to_position, color=(0.2, 0.9, 0.2))
+                component.register_method = 'average surface normal'
+                component.register_dura_vertex_id = 100 #arbitrary
 
     @QtCore.Slot()
     @wrap_get_set_view
@@ -1288,7 +1553,7 @@ class Application(object):
             else:
                 debug('manual registration only supports single selection')
                 self.ui.pushButton_manual.setChecked(False)
-            
+
         else:
             info('stop manual registration mode')
             self.mode = 'free'
@@ -1341,7 +1606,6 @@ class Application(object):
                 for r in xrange(sm.rowCount(x)):
                     o.append(sm.index(r, 0, x))
 
-
     def pick_dura_point(self):
         pass
 
@@ -1358,7 +1622,7 @@ class Application(object):
             if sm.hasChildren(x):
                 for r in xrange(sm.rowCount(x)):
                     o.append(sm.index(r, 0, x))
-        
+
         self.ui.label_edit_electrode_count.setText(str(n))
         self.ui.label_register_electrode_count.setText(str(n))
 
@@ -1375,7 +1639,7 @@ class Application(object):
             if sm.hasChildren(x):
                 for r in xrange(sm.rowCount(x)):
                     o.append(sm.index(r, 0, x))
-        
+
         self.ui.label_component_count.setText(str(n))
 
         debug('updated component count: %d' % n)
@@ -1410,22 +1674,22 @@ class Application(object):
 
         def browse_csv():
             fn, t = QtGui.QFileDialog.getSaveFileName(dir='electrodes.csv',
-                                                      caption='Save CSV to...', 
+                                                      caption='Save CSV to...',
                                                       filter='CSV File (*.csv);;Any File (*)')
             dialog_ui.lineEdit_csv.setText(fn)
         dialog_ui.pushButton_csv_browse.clicked.connect(browse_csv)
         dialog_ui.pushButton_csv_export.clicked.connect(lambda : self.export_csv(dialog_ui.lineEdit_csv.text(), dialog_ui.checkBox_only_selected.isChecked()))
-    
+
         def browse_dat():
             if dialog_ui.checkBox_per_grid.isChecked():
                 fn = QtGui.QFileDialog.getExistingDirectory(dir='electrodes',
-                                                            caption='Save Freesurfer Pointsets to...') 
+                                                            caption='Save Freesurfer Pointsets to...')
                 fn += os.sep
             else:
                 fn, t = QtGui.QFileDialog.getSaveFileName(dir='electrodes.dat',
-                                                          caption='Save Freesurfer Pointset to...', 
+                                                          caption='Save Freesurfer Pointset to...',
                                                           filter='Freesurfer Pointset File (*.dat);;Any File (*)')
-                
+
             dialog_ui.lineEdit_dat.setText(fn)
         dialog_ui.pushButton_dat_browse.clicked.connect(browse_dat)
         dialog_ui.pushButton_dat_export.clicked.connect(lambda : self.export_dat(dialog_ui.lineEdit_dat.text(), dialog_ui.checkBox_only_selected.isChecked(), dialog_ui.checkBox_per_grid.isChecked()))
@@ -1452,12 +1716,12 @@ class Application(object):
                         'grid label': electrode.grid_label,
                         'grid id': electrode.grid_id,
                         'channel number': electrode.channel_number,
-                        'original location.x': electrode.centroid[0,0], 
-                        'original location.y': electrode.centroid[1,0], 
-                        'original location.z': electrode.centroid[2,0], 
+                        'original location.x': electrode.centroid[0,0],
+                        'original location.y': electrode.centroid[1,0],
+                        'original location.z': electrode.centroid[2,0],
                         'register method': electrode.register_method or 'none',
-                        'registered location.x': electrode.register_position[0], 
-                        'registered location.y': electrode.register_position[1], 
+                        'registered location.x': electrode.register_position[0],
+                        'registered location.y': electrode.register_position[1],
                         'registered location.z': electrode.register_position[2],
                         'dura vertex id': electrode.register_dura_vertex_id,
                         'note': electrode.note,
@@ -1496,7 +1760,7 @@ class Application(object):
             f.write('numpoints %d\n' % n)
             f.write('useRealRAS 1')
         info('finish exporting %d electrodes to %s' % (len(electrodes), fn))
-            
+
 
     def batch_assign_grid_label(self):
         info('assigning grid label %s to electrodes in batch' % self.ui.lineEdit_grid_label.text())
@@ -1510,10 +1774,10 @@ class Application(object):
     def export_segmentation_dataset(self):
         info('exporting segmentation dataset for training classifiers')
 
-        fn, t = QtGui.QFileDialog.getSaveFileName(caption='Export Segmentation Dataset...', 
+        fn, t = QtGui.QFileDialog.getSaveFileName(caption='Export Segmentation Dataset...',
                                                   filter='CSV File (*.csv);; Any File (*)',
                                                   options=QtGui.QFileDialog.DontUseNativeDialog)
-        
+
         if fn:
             sm = self.segment_model
             o = [QtCore.QModelIndex()]
@@ -1532,7 +1796,7 @@ class Application(object):
                 for component in components:
                     centroid = component.centroid.reshape(-1)
                     ptps = component.points.ptp(axis=1)
-                    dv = np.product(self.ct.getVoxDims())
+                    dv = np.product(self.ct.get_shape())
                     distance, index = self.dura_vertices_kdtree.query(centroid)
 
                     electrode_count = 1 if component.is_electrode else 0
@@ -1550,15 +1814,15 @@ class Application(object):
                         'centroid.x': centroid[0],
                         'centroid.y': centroid[1],
                         'centroid.z': centroid[2],
-                        'ptp.x': ptps[0], 
-                        'ptp.y': ptps[1], 
+                        'ptp.x': ptps[0],
+                        'ptp.y': ptps[1],
                         'ptp.z': ptps[2],
                         'dura_distance': distance,
                         'is_top_segment': 1 if component.parent == sm.root_item else 0,
                         'children_count': component.childCount(),
                         'electrode_count': electrode_count,
                     })
-                    # note components containing electrodes vs electrodes 
+                    # note components containing electrodes vs electrodes
                     # electrode_count=1 and children_count>0 vs electrode_count=1 and children_count=0
             info('exported to %s' % fn)
 
@@ -1583,12 +1847,12 @@ if __name__ == '__main__':
     window = QtGui.QMainWindow()
     ui = Ui_MainWindow()
     ui.setupUi(window)
-    
+
     mayavi_widget = MayaviQWidget()
     window.setCentralWidget(mayavi_widget)
 
     main = Application(ui=ui, mlab=mayavi_widget.visualization.scene.mlab)
-    
+
     window.show()
     app.exec_()
 

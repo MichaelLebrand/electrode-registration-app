@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'ui/open_files_dialog.ui'
+# Form implementation generated from reading ui file 'open_files_dialog.ui'
 #
-# Created: Thu Oct 31 15:38:50 2013
-#      by: pyside-uic 0.2.15 running on PySide 1.2.1
+# Created: Fri Mar 30 10:20:31 2018
+#      by: pyside-uic 0.2.15 running on PySide 1.2.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -39,8 +39,19 @@ class Ui_Dialog(object):
         self.duraPushButton.setObjectName("duraPushButton")
         self.horizontalLayout_2.addWidget(self.duraPushButton)
         self.verticalLayout.addLayout(self.horizontalLayout_2)
-        spacerItem = QtGui.QSpacerItem(20, 40, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Expanding)
-        self.verticalLayout.addItem(spacerItem)
+        self.horizontalLayout_3 = QtGui.QHBoxLayout()
+        self.horizontalLayout_3.setObjectName("horizontalLayout_3")
+        self.label_3 = QtGui.QLabel(Dialog)
+        self.label_3.setObjectName("label_3")
+        self.horizontalLayout_3.addWidget(self.label_3)
+        self.maskLineEdit = QtGui.QLineEdit(Dialog)
+        self.maskLineEdit.setText("")
+        self.maskLineEdit.setObjectName("maskLineEdit")
+        self.horizontalLayout_3.addWidget(self.maskLineEdit)
+        self.maskPushButton = QtGui.QPushButton(Dialog)
+        self.maskPushButton.setObjectName("maskPushButton")
+        self.horizontalLayout_3.addWidget(self.maskPushButton)
+        self.verticalLayout.addLayout(self.horizontalLayout_3)
         self.buttonBox = QtGui.QDialogButtonBox(Dialog)
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Open)
@@ -60,4 +71,7 @@ class Ui_Dialog(object):
         self.label_2.setText(QtGui.QApplication.translate("Dialog", "Dura mesh", None, QtGui.QApplication.UnicodeUTF8))
         self.duraLineEdit.setPlaceholderText(QtGui.QApplication.translate("Dialog", "path to dura surface mesh", None, QtGui.QApplication.UnicodeUTF8))
         self.duraPushButton.setText(QtGui.QApplication.translate("Dialog", "Browse...", None, QtGui.QApplication.UnicodeUTF8))
+        self.label_3.setText(QtGui.QApplication.translate("Dialog", "Brainmask", None, QtGui.QApplication.UnicodeUTF8))
+        self.maskLineEdit.setPlaceholderText(QtGui.QApplication.translate("Dialog", "path to brainmask(.mgz)", None, QtGui.QApplication.UnicodeUTF8))
+        self.maskPushButton.setText(QtGui.QApplication.translate("Dialog", "Browse..", None, QtGui.QApplication.UnicodeUTF8))
 
