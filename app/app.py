@@ -240,6 +240,7 @@ class ComponentItem(object):
         return getattr(self, ComponentItem.prop_map[column])
 
 
+
 class PointComponentItem(ComponentItem):
     def __init__(self, name, xyz,
                  source, surface, outline=None, text=None,
