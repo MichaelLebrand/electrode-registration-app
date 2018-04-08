@@ -144,12 +144,18 @@ class ComponentItem(object):
     @property
     def points(self):
         ijks = np.asarray(np.nonzero(self.voxel))
-        return self.transform[:3, :3].dot(ijks) + self.transform[:3, 3:]
+        translationIndices = np.asarray(np.nonzero(self.transform[:3, :3]))
+        translationValues = self.transform[translationIndices[0], translationIndices[1]]
+        return (self.transform[:3, :3].dot(ijks) + self.transform[:3, 3:]) + translationValues.reshape(3,-1)
+        # return (self.transform[:3, :3].dot(ijks) + self.transform[:3, 3:])
 
     @property
     def centroid(self):
         c = ndimage.measurements.center_of_mass(self.voxel)
-        return self.transform[:3, :3].dot(np.reshape(c, (3, -1))) + self.transform[:3, 3:]
+        translationIndices = np.asarray(np.nonzero(self.transform[:3, :3]))
+        translationValues = self.transform[translationIndices[0], translationIndices[1]]
+        return (self.transform[:3, :3].dot(np.reshape(c, (3, -1))) + self.transform[:3, 3:]) + translationValues.reshape(3,-1)
+        # return (self.transform[:3, :3].dot(np.reshape(c, (3, -1)))) + self.transform[:3, 3:]
 
     @property
     def grid_label(self):
@@ -914,8 +920,8 @@ class Application(object):
 
         self.ct_fig = source
 
-        # maskedCT = nib.Nifti1Image(ctEroded, self.ct_orig._affine, self.ct_orig.header)
-        # nib.save(maskedCT, '/home/michael/Documents/Subjects/DY_043_AL/CT/maskedCTEroded_1.nii')
+        maskedCT = nib.Nifti1Image(ctEroded, self.ct_orig._affine, self.ct_orig.header)
+        nib.save(maskedCT, '/home/michael/Documents/Subjects/DY_043_AL/CT/maskedCTEroded_1.nii')
 
 
     def preview_threshold(self):
@@ -991,6 +997,7 @@ class Application(object):
             n = 0
 
             #view = self.get_view()
+            np.dot
 
             for i, s in enumerate(slices):
                 bbc0 = np.reshape(map(lambda x: max(0, x.start - 1), s), (-1, 1))
@@ -1012,21 +1019,23 @@ class Application(object):
                     # inverse index
                     self.pickable_actors[repr(component.surface.actor.actor)] = component
                     n += 1
-                    xyz = component.centroid
-                    x1, y1, z1 = xyz
-                    color1 = (0.9, 0.9, 0.9)
-                    component.centroidDot = self.mlab.points3d([x1], [y1], [z1], color=color1, scale_factor=1)
-                    component.centroidDot.actor.actor.pickable = 0
 
-                    color2 = (0.9, 0.3, 0.5)
-                    xx, yy, zz = component.points
-                    component.pointsVis = self.mlab.points3d([xx], [yy], [zz], color=color2, scale_factor=1)
-                    component.pointsVis.actor.actor.pickable = 0
+                    ## uncomment to see the plots after segmentation
+                    # xyz = component.centroid
+                    # x1, y1, z1 = xyz
+                    # color1 = (0.9, 0.9, 0.9)
+                    # component.centroidDot = self.mlab.points3d([x1], [y1], [z1], color=color1, scale_factor=1)
+                    # component.centroidDot.actor.actor.pickable = 0
 
-                    x2, y2, z2 = component.bb_center
-                    color3 = (0.1, 0.9, 0.1)
-                    component.centroidDot = self.mlab.points3d([x2], [y2], [z2], color=color3, scale_factor=1)
-                    component.centroidDot.actor.actor.pickable = 0
+                    # color2 = (0.9, 0.3, 0.5)
+                    # xx, yy, zz = component.points
+                    # component.pointsVis = self.mlab.points3d([xx], [yy], [zz], color=color2, scale_factor=1)
+                    # component.pointsVis.actor.actor.pickable = 0
+
+                    # x2, y2, z2 = component.bb_center
+                    # color3 = (0.1, 0.9, 0.1)
+                    # component.centroidDot = self.mlab.points3d([x2], [y2], [z2], color=color3, scale_factor=1)
+                    # component.centroidDot.actor.actor.pickable = 0
 
 
             info('done segmenting, selected %d out of %d connected components' % (n, len(slices)))
@@ -1380,8 +1389,7 @@ class Application(object):
         component.rod = self.mlab.plot3d(xx, yy, zz, color=color, tube_radius=0.5)
         component.rod.actor.actor.pickable = 0
         component.register_position = to_position
-        # xyz = component.bb_center
-        x1, y1, z1 = component.bb_center
+        x1, y1, z1 = component.centroid
         color1 = (0.9, 0.9, 0.9)
         component.centroidDot = self.mlab.points3d([x1], [y1], [z1], color=color1, scale_factor=1)
         component.centroidDot.actor.actor.pickable = 0
