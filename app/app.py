@@ -27,7 +27,7 @@ os.environ['ETS_TOOLKIT'] = 'qt4'
 from pyface.qt import QtGui, QtCore
 from pyface.qt.QtCore import Qt
 
-#from PySide.QtGui import QApplication, QMainWindow
+from PySide.QtGui import QItemSelectionModel
 from ui.mainwindow import Ui_MainWindow
 from ui.open_files_dialog import Ui_Dialog as Ui_OpenFilesDialog
 from ui.export_dialog import Ui_Dialog as Ui_ExportDialog
@@ -238,6 +238,7 @@ class ComponentItem(object):
     def data(self, column):
         #debug('item.data', getattr(self, ComponentItem.prop_map[column]))
         return getattr(self, ComponentItem.prop_map[column])
+
 
 
 
@@ -593,7 +594,7 @@ class Application(object):
             ui.treeView_edit.setColumnHidden(i, True)
 
         self.segment_selection_model = ui.treeView_edit.selectionModel()
-        ui.pushButton_add.toggled.connect(self.manual_add)
+        ui.pushButton_add.toggled.connect(self.reset_segmentation)
         ui.pushButton_import_point_set.clicked.connect(self.import_from_point_set)
         ui.pushButton_remove.clicked.connect(self.remove_segment)
         ui.pushButton_restore.clicked.connect(self.restore_segment)
@@ -723,6 +724,28 @@ class Application(object):
         if QtGui.QDialog.Accepted == dialog.exec_():
             info('read CT and dura paths')
             self.read_ct_dura(dialog_ui.ctLineEdit.text(), dialog_ui.duraLineEdit.text(), dialog_ui.maskLineEdit.text())
+
+    def reset_segmentation(self):
+        for idx in self.ui.treeView_edit.selectAll():
+            item = self.segment_model.itemFromIndex(idx)
+            self._remove_segment(item)
+
+        self.segment_model = ComponentModel()
+        self.segment_selection_model = None
+        ui.treeView_edit.setModel(self.segment_model)
+        # show only the first column
+        for i in xrange(1, len(ComponentItem.prop_map)):
+            ui.treeView_edit.setColumnHidden(i, True)
+
+        self.register_model.build_index_maps()
+        self.update_electrode_count()
+        self.update_register_count()
+        self.segment_selection_model = ui.treeView_edit.selectionModel()
+        self.pickable_actors.clear()
+        self.register_model.build_index_maps()
+        self.update_electrode_count()
+        self.update_register_count()
+        self.update_component_count()
 
     def read_ct_dura(self, ct_path, dura_path, mask_path):
         info('reading CT from %s' % ct_path)
