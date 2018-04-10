@@ -27,7 +27,7 @@ os.environ['ETS_TOOLKIT'] = 'qt4'
 from pyface.qt import QtGui, QtCore
 from pyface.qt.QtCore import Qt
 
-from PySide.QtGui import QItemSelectionModel
+# from PySide.QtGui import QItemSelectionModel
 from ui.mainwindow import Ui_MainWindow
 from ui.open_files_dialog import Ui_Dialog as Ui_OpenFilesDialog
 from ui.export_dialog import Ui_Dialog as Ui_ExportDialog
@@ -108,7 +108,7 @@ class ComponentItem(object):
             'set': lambda x: int(x) if x.strip().isdigit() else None,
         },
     }
-    os.chdir('/Users/michaelleibbrand/git-hub/electrode-registration-app')
+    os.chdir('/home/michael/electrode-registration-app')
     grid_color_lut = map(lambda rgb: tuple(map(lambda x: x / 255., rgb)), json.load(open('app/brewer-qualitative.strong.12.json')))
     grid_labels = []
 
@@ -502,14 +502,14 @@ def save_project():
 class Application(object):
     # data source
     ct = None
-    ct_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/rCT.nii'
+    ct_path = '/home/michael/electrode-registration-app/files/rCT.nii'
     dura = None
-    dura_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/rh.sm_outer_dural'
-    mask_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/brainmask.mgz'
+    dura_path = '/home/michael/electrode-registration-app/files/rh.sm_outer_dural'
+    mask_path = '/home/michael/electrode-registration-app/files/brainmask.mgz'
 
     # optional
     pial = None
-    pial_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/rh.pial'
+    pial_path = '/home/michael/electrode-registration-app/files/rh.pial'
 
     # data
     ct_volume = None
@@ -725,15 +725,15 @@ class Application(object):
             info('read CT and dura paths')
             self.read_ct_dura(dialog_ui.ctLineEdit.text(), dialog_ui.duraLineEdit.text(), dialog_ui.maskLineEdit.text())
 
-    def reset_segmentation(self):
-        for idx in self.ui.treeView_edit.selectAll():
-            item = self.segment_model.itemFromIndex(idx)
-            self._remove_segment(item)
 
+    def reset_segmentation(self):
+        for actor in self.pickable_actors:
+            self.pickable_actors[actor].source.stop()
+
+        self.segment_selection_model.reset()
         self.segment_model = ComponentModel()
         self.segment_selection_model = None
         ui.treeView_edit.setModel(self.segment_model)
-        # show only the first column
         for i in xrange(1, len(ComponentItem.prop_map)):
             ui.treeView_edit.setColumnHidden(i, True)
 
@@ -742,10 +742,21 @@ class Application(object):
         self.update_register_count()
         self.segment_selection_model = ui.treeView_edit.selectionModel()
         self.pickable_actors.clear()
+        # segmented components
+        components = []
+        slices = []
+        pickable_actors = {}
+        self.register_model = FlattenTreeProxyModel()
+        self.register_model.setSourceModel(self.segment_model)
+        self.label_model = QtGui.QSortFilterProxyModel()
+        self.label_model.setSourceModel(self.register_model)
         self.register_model.build_index_maps()
+        self.segment_selection_model.selectedIndexes
+        self.fig.on_mouse_pick(self.pick_callback, type='cell', button='Left', remove=True)
         self.update_electrode_count()
         self.update_register_count()
         self.update_component_count()
+
 
     def read_ct_dura(self, ct_path, dura_path, mask_path):
         info('reading CT from %s' % ct_path)
@@ -985,9 +996,30 @@ class Application(object):
         self.ui.pushButton_hide_preview.setEnabled(True)
 
 
+    def pick_callback(self, picker):
+        debug('add picker callback')
+        for actor in reversed(picker.actors):
+            if repr(actor) in self.pickable_actors:
+                target = self.pickable_actors[repr(actor)]
+                debug('picked %r' % target)
+                break
+        else:
+            debug('no component is picked')
+            return
+
+        self.segment_selection_model.select(target.index, QtGui.QItemSelectionModel.Toggle)
+        self.ui.treeView_edit.scrollTo(target.index)
+        ridx = self.register_model.mapFromSource(target.index)
+        self.ui.listView_register.scrollTo(ridx)
+        self.ui.tableView_label.scrollTo(self.label_model.mapFromSource(ridx))
+
     @wrap_get_set_view
     def segment(self):
         info('segmenting CT')
+        if self.pickable_actors.__len__()>0:
+            info('resetting previous segmentation')
+            self.reset_segmentation()
+
         threshold = self.ui.spinBox_threshold.value()
         distance = self.ui.doubleSpinBox_distance.value()
         size = self.ui.doubleSpinBox_size.value()
@@ -1064,27 +1096,27 @@ class Application(object):
 
             info('done segmenting, selected %d out of %d connected components' % (n, len(slices)))
 
-            #self.set_view(*view)
-
             debug('add picker callback')
-            def pick_callback(picker):
-                for actor in reversed(picker.actors):
-                    if repr(actor) in self.pickable_actors:
-                        target = self.pickable_actors[repr(actor)]
-                        debug('picked %r' % target)
-                        break
-                else:
-                    debug('no component is picked')
-                    return
-
-                self.segment_selection_model.select(target.index, QtGui.QItemSelectionModel.Toggle)
-                self.ui.treeView_edit.scrollTo(target.index)
-                ridx = self.register_model.mapFromSource(target.index)
-                self.ui.listView_register.scrollTo(ridx)
-                self.ui.tableView_label.scrollTo(self.label_model.mapFromSource(ridx))
+            # def pick_callback(picker):
+            #     for actor in reversed(picker.actors):
+            #         if repr(actor) in self.pickable_actors:
+            #             target = self.pickable_actors[repr(actor)]
+            #             debug('picked %r' % target)
+            #             break
+            #     else:
+            #         debug('no component is picked')
+            #         return
+            #
+            #     self.segment_selection_model.select(target.index, QtGui.QItemSelectionModel.ToggleCurrent)
+            #     self.ui.treeView_edit.scrollTo(target.index)
+            #     ridx = self.register_model.mapFromSource(target.index)
+            #     self.ui.listView_register.scrollTo(ridx)
+            #     self.ui.tableView_label.scrollTo(self.label_model.mapFromSource(ridx))
 
             # add pick callback, make picker more precise
-            picker = self.fig.on_mouse_pick(pick_callback, type='cell', button='Left')
+            # if self.fig.on_mouse_pick:
+            #     picker = self.fig.on_mouse_pick(pick_callback, remove = True)
+            picker = self.fig.on_mouse_pick(self.pick_callback, type='cell', button='Left')
             picker.tolerance = 0.005
 
             debug('defining manual add + registration callback')
@@ -1112,18 +1144,19 @@ class Application(object):
                     self.update_component_count()
                     self.update_electrode_count()
 
-            self.fig.on_mouse_pick(pick_manual_callback, type='cell', button='Right')
+            self.fig.on_mouse_pick(pick_manual_callback, type='cell', button='Left')
 
             # set up tree edit selection model
             def segment_model_selection_callback(selected, deselected):
-                #import pdb; pdb.set_trace()
-                for idx in selected.indexes():
-                    item = self.segment_model.itemFromIndex(idx)
-                    self.toggle_component_selection(item, True)
+                # if deselected.empty():
                 for idx in deselected.indexes():
                     item = self.segment_model.itemFromIndex(idx)
                     self.toggle_component_selection(item, False)
+                for idx in selected.indexes():
+                    item = self.segment_model.itemFromIndex(idx)
+                    self.toggle_component_selection(item, True)
 
+            self.segment_selection_model.reset()
             self.segment_selection_model.selectionChanged.connect(segment_model_selection_callback)
 
             info('edit tab enabled')
@@ -1150,13 +1183,13 @@ class Application(object):
                 for idx in selected.indexes():
                     ridx = self.register_model.mapFromSource(idx)
                     lidx = self.label_model.mapFromSource(ridx)
-                    #debug('selected', idx, ridx, lidx)
+                    # debug('selected', idx, ridx, lidx)
                     self.register_selection_model.select(ridx, QtGui.QItemSelectionModel.Select | QtGui.QItemSelectionModel.Rows)
                     self.label_selection_model.select(lidx, QtGui.QItemSelectionModel.Select | QtGui.QItemSelectionModel.Rows)
                 for idx in deselected.indexes():
                     ridx = self.register_model.mapFromSource(idx)
                     lidx = self.label_model.mapFromSource(ridx)
-                    #debug('deselected', idx, ridx, lidx)
+                    # debug('deselected', idx, ridx, lidx)
                     self.register_selection_model.select(ridx, QtGui.QItemSelectionModel.Deselect | QtGui.QItemSelectionModel.Rows)
                     self.label_selection_model.select(lidx, QtGui.QItemSelectionModel.Deselect | QtGui.QItemSelectionModel.Rows)
 
@@ -1201,6 +1234,7 @@ class Application(object):
 
     def toggle_component_selection(self, component, select=None):
         target = component.surface
+        target.parent
         outline = target.parent.children[-1]
         if isinstance(outline, mayavi.modules.outline.Outline):
             debug('outline exists')
