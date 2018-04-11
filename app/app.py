@@ -108,7 +108,7 @@ class ComponentItem(object):
             'set': lambda x: int(x) if x.strip().isdigit() else None,
         },
     }
-    os.chdir('/home/michael/electrode-registration-app')
+    os.chdir('/Users/michaelleibbrand/git-hub/electrode-registration-app')
     grid_color_lut = map(lambda rgb: tuple(map(lambda x: x / 255., rgb)), json.load(open('app/brewer-qualitative.strong.12.json')))
     grid_labels = []
 
@@ -502,14 +502,14 @@ def save_project():
 class Application(object):
     # data source
     ct = None
-    ct_path = '/home/michael/electrode-registration-app/files/rCT.nii'
+    ct_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/rCT.nii'
     dura = None
-    dura_path = '/home/michael/electrode-registration-app/files/rh.sm_outer_dural'
-    mask_path = '/home/michael/electrode-registration-app/files/brainmask.mgz'
+    dura_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/rh.sm_outer_dural'
+    mask_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/brainmask.mgz'
 
     # optional
     pial = None
-    pial_path = '/home/michael/electrode-registration-app/files/rh.pial'
+    pial_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/rh.pial'
 
     # data
     ct_volume = None
