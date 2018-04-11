@@ -523,8 +523,8 @@ class Application(object):
 
     # parameters
     segment_value_threshold = 3200
-    segment_distance_threshold = 25.
-    segment_size_threshold = 5.
+    segment_distance_threshold = 10.
+    segment_size_threshold = 1.
 
     # scene objects
     ct_fig = None
@@ -594,8 +594,8 @@ class Application(object):
             ui.treeView_edit.setColumnHidden(i, True)
 
         self.segment_selection_model = ui.treeView_edit.selectionModel()
-        ui.pushButton_add.toggled.connect(self.reset_segmentation)
-        ui.pushButton_import_point_set.clicked.connect(self.import_from_point_set)
+        # ui.pushButton_add.toggled.connect(self.reset_segmentation)
+        # ui.pushButton_import_point_set.clicked.connect(self.import_from_point_set)
         ui.pushButton_remove.clicked.connect(self.remove_segment)
         ui.pushButton_restore.clicked.connect(self.restore_segment)
         ui.pushButton_split.clicked.connect(self.split_component)
@@ -604,9 +604,9 @@ class Application(object):
         self.register_model = FlattenTreeProxyModel()
         self.register_model.setSourceModel(self.segment_model)
         ui.pushButton_nearest.clicked.connect(self.do_register_nearest)
-        ui.pushButton_principal.clicked.connect(self.do_register_principal_axis)
-        ui.pushButton_svd.clicked.connect(self.do_register_radius)
-        ui.pushButton_manual.toggled.connect(self.do_register_manual)
+        # ui.pushButton_principal.clicked.connect(self.do_register_principal_axis)
+        ui.pushButton_AvgSurfNormal.clicked.connect(self.do_register_radius)
+        # ui.pushButton_manual.toggled.connect(self.do_register_manual)
         ui.pushButton_unregister.clicked.connect(self.unregister)
 
         # label tab
@@ -619,7 +619,7 @@ class Application(object):
         ui.actionExport_segmentation_dataset.triggered.connect(self.export_segmentation_dataset)
 
         self.load_pial()
-
+        self.read_ct_dura(self.ct_path,self.dura_path,self.mask_path)
 
     @classmethod
     def from_dict(cls, obj):
@@ -693,9 +693,6 @@ class Application(object):
         dialog_ui.ctPushButton.clicked.connect(ct_file_dialog.exec_)
         ct_file_dialog.fileSelected.connect(dialog_ui.ctLineEdit.setText)
 
-        #dialog_ui.ctPushButton.clicked.connect(lambda : browse_file(dialog_ui.ctLineEdit, 'Open CT Volume', 'Nifti file (*.img *.hdr);; Any file (*.*)'))
-        #dialog_ui.duraPushButton.clicked.connect(lambda : browse_file(dialog_ui.duraLineEdit, 'Open Dura Mesh', ''))
-
         dura_file_dialog = QtGui.QFileDialog()
         dura_file_dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
         dura_file_dialog.setNameFilters(['Any File (*)'])
@@ -727,6 +724,11 @@ class Application(object):
 
 
     def reset_segmentation(self):
+        '''
+        This will reset most of the QTree structure and the components, as well as remove them from the view. Allows
+        you to re-segment with different settings right away.
+        :return:
+        '''
         for actor in self.pickable_actors:
             self.pickable_actors[actor].source.stop()
 
@@ -955,8 +957,8 @@ class Application(object):
 
         self.ct_fig = source
 
-        maskedCT = nib.Nifti1Image(ctEroded, self.ct_orig._affine, self.ct_orig.header)
-        nib.save(maskedCT, '/home/michael/Documents/Subjects/DY_043_AL/CT/maskedCTEroded_1.nii')
+        # maskedCT = nib.Nifti1Image(ctEroded, self.ct_orig._affine, self.ct_orig.header)
+        # nib.save(maskedCT, '/home/michael/Documents/Subjects/DY_043_AL/CT/maskedCTEroded_1.nii')
 
 
     def preview_threshold(self):
@@ -975,14 +977,9 @@ class Application(object):
 
             img = ct.get_data()
 
-            #ndimage.gaussian_filter(img, 0.5, output=img)
             source = mlab.pipeline.scalar_field(img)
-
             contour_filter = mlab.pipeline.contour(source)
             contour_filter.filter.contours = [threshold]
-
-            # dataFilter = mlab.pipeline.cut_plane(contour_filter)
-
             transform_filter = build_transform_filter(mlab, contour_filter, ct.get_sform())
 
             normal_filter = mlab.pipeline.poly_data_normals(transform_filter)
@@ -1012,6 +1009,7 @@ class Application(object):
         ridx = self.register_model.mapFromSource(target.index)
         self.ui.listView_register.scrollTo(ridx)
         self.ui.tableView_label.scrollTo(self.label_model.mapFromSource(ridx))
+
 
     @wrap_get_set_view
     def segment(self):
@@ -1156,7 +1154,6 @@ class Application(object):
                     item = self.segment_model.itemFromIndex(idx)
                     self.toggle_component_selection(item, True)
 
-            self.segment_selection_model.reset()
             self.segment_selection_model.selectionChanged.connect(segment_model_selection_callback)
 
             info('edit tab enabled')
@@ -1458,7 +1455,7 @@ class Application(object):
         p = self.dura_vertices[i] + self.surf2ras[:3, 3:].T
         return i, p[0]
 
-    def get_vertices_radius(self, component, dist = 25):
+    def get_vertices_radius(self, component, dist):
         c = component.centroid.reshape(-1)
         verticesInRadius = self.dura_vertices_kdtree.query_ball_point(c,dist)
         return verticesInRadius
@@ -1528,12 +1525,12 @@ class Application(object):
 
         return elecmatrix
 
-    def get_surfaceNormal(self, component, normals):
+    def get_surfaceNormal(self, component, normals, dist = 25):
         '''
         Get the average surfaceNormal from a subset of normals
         :return: vector (x,y,z)
         '''
-        vert_idx = self.get_vertices_radius(component, dist = 25)
+        vert_idx = self.get_vertices_radius(component, dist)
         inRange = normals[vert_idx]
 
         avgNormal = np.zeros([1,3])
@@ -1570,63 +1567,14 @@ class Application(object):
         for idx in self.register_selection_model.selectedIndexes():
             if idx.column() == 0:
                 component = self.segment_model.itemFromIndex(self.register_model.mapToSource(idx))
-                direction = self.get_surfaceNormal(component,normals)
+                diameter = self.ui.spinbox_Diameter.value()
+                direction = self.get_surfaceNormal(component,normals, diameter)
                 point = component.centroid.reshape(-1)
                 to_position = projElectrodes.projectElectrodes(self.dura_faces,self.dura_vertices + self.surf2ras[:3, 3:].T,point,direction)
 
                 self.register_electrode(component, to_position, color=(0.2, 0.9, 0.2))
                 component.register_method = 'average surface normal'
                 component.register_dura_vertex_id = 100 #arbitrary
-
-    @QtCore.Slot()
-    @wrap_get_set_view
-    def do_register_principal_axis(self):
-        info('registering electrodes by projecting along their principal axes')
-        for idx in self.register_selection_model.selectedIndexes():
-            if idx.column() == 0:
-                component = self.segment_model.itemFromIndex(self.register_model.mapToSource(idx))
-                dura_id, to_position = self.register_pa(component)
-                self.register_electrode(component, to_position, color=(0.2, 0.9, 0.2))
-                component.register_method = 'principal axis'
-                component.register_dura_vertex_id = dura_id
-        self.update_register_count()
-
-
-    @QtCore.Slot()
-    @wrap_get_set_view
-    def do_register_svd(self):
-        info('registering electrodes by projecting along their best fitted planes\' normals')
-        for idx in self.register_selection_model.selectedIndexes():
-            if idx.column() == 0:
-                component = self.segment_model.itemFromIndex(self.register_model.mapToSource(idx))
-                dura_id, to_position = self.register_svd(component)
-                self.register_electrode(component, to_position, color=(0.2, 0.7, 0.9))
-                component.register_method = 'best fitted plane'
-                component.register_dura_vertex_id = dura_id
-        self.update_register_count()
-
-
-    @QtCore.Slot(bool)
-    def do_register_manual(self, checked):
-        # TODO dynamic enable/disable state
-        if checked:
-            selected = filter(lambda x: x.column()==0, self.register_selection_model.selectedIndexes())
-            if len(selected) == 1 and self.mode == 'free':
-                info('start registering electrodes manually')
-                self.toggle_components_pickable(False)
-                self.mode = 'manual register'
-                self.update_register_count()
-            else:
-                debug('manual registration only supports single selection')
-                self.ui.pushButton_manual.setChecked(False)
-
-        else:
-            info('stop manual registration mode')
-            self.mode = 'free'
-            #import pdb; pdb.set_trace()
-            self.toggle_components_pickable(True)
-            #self.fig.on_mouse_pick(self.pick_register_point_callback, type='cell', button='Right', remove=True)
-            #self.pick_register_point_callback = None
 
 
     @QtCore.Slot()
@@ -1728,6 +1676,10 @@ class Application(object):
                 n_registered += 1
         info('registered electrode count: %d' % n_registered)
         self.ui.label_register_complete_count.setText(str(n_registered))
+
+    #
+    # def save(self):
+    #
 
 
     @QtCore.Slot()

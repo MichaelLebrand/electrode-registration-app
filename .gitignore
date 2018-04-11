@@ -4,3 +4,4 @@ venv/
 #*
 *.ui.autosave
 .idea/
+__pycache__

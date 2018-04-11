@@ -61,19 +61,6 @@ QMenuBar::item {
         </attribute>
         <layout class="QVBoxLayout" name="verticalLayout_7">
          <item>
-          <widget class="QPushButton" name="pushButton_open_ct_dura">
-           <property name="text">
-            <string>Open CT and Dura...</string>
-           </property>
-           <property name="autoDefault">
-            <bool>false</bool>
-           </property>
-           <property name="default">
-            <bool>false</bool>
-           </property>
-          </widget>
-         </item>
-         <item>
           <widget class="QFrame" name="frame_segment">
            <property name="enabled">
             <bool>false</bool>
@@ -432,29 +419,6 @@ QMenuBar::item {
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="pushButton_add">
-           <property name="text">
-            <string>&amp;Add</string>
-           </property>
-           <property name="shortcut">
-            <string>A</string>
-           </property>
-           <property name="checkable">
-            <bool>true</bool>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="pushButton_import_point_set">
-           <property name="text">
-            <string>&amp;Import from Point Set...</string>
-           </property>
-           <property name="shortcut">
-            <string>I</string>
-           </property>
-          </widget>
-         </item>
-         <item>
           <layout class="QHBoxLayout" name="horizontalLayout_10">
            <item>
             <widget class="QPushButton" name="pushButton_remove">
@@ -618,24 +582,21 @@ QMenuBar::item {
         <attribute name="title">
          <string>Register</string>
         </attribute>
-        <layout class="QVBoxLayout" name="verticalLayout_4">
-         <item>
-          <widget class="QListView" name="listView_register">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
+        <layout class="QGridLayout" name="gridLayout_4">
+         <item row="9" column="0">
+          <widget class="QPushButton" name="pushButton_nearest">
+           <property name="toolTip">
+            <string>This projection just projects to the nearest vertex (euclidean distance) of the suface model.</string>
            </property>
-           <property name="alternatingRowColors">
-            <bool>true</bool>
+           <property name="text">
+            <string>Alt. projection: Nearest vertex</string>
            </property>
-           <property name="selectionMode">
-            <enum>QAbstractItemView::MultiSelection</enum>
+           <property name="shortcut">
+            <string>N</string>
            </property>
           </widget>
          </item>
-         <item>
+         <item row="1" column="0">
           <layout class="QHBoxLayout" name="horizontalLayout_6">
            <item>
             <spacer name="horizontalSpacer_4">
@@ -672,7 +633,23 @@ QMenuBar::item {
            </item>
           </layout>
          </item>
-         <item>
+         <item row="0" column="0">
+          <widget class="QListView" name="listView_register">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="selectionMode">
+            <enum>QAbstractItemView::MultiSelection</enum>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
           <layout class="QHBoxLayout" name="horizontalLayout_11">
            <item>
             <widget class="QLabel" name="label_register_complete_count">
@@ -723,58 +700,26 @@ QMenuBar::item {
            </item>
           </layout>
          </item>
-         <item>
-          <layout class="QGridLayout" name="gridLayout">
-           <item row="1" column="0">
-            <widget class="QPushButton" name="pushButton_svd">
+         <item row="11" column="0">
+          <widget class="Line" name="line_2">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="0">
+          <layout class="QHBoxLayout" name="horizontalLayout_2">
+           <item>
+            <widget class="QPushButton" name="pushButton_register_clear">
              <property name="text">
-              <string>&amp;Best-fit Plane</string>
+              <string>&amp;Clear Selection</string>
              </property>
              <property name="shortcut">
-              <string>B</string>
+              <string>C</string>
              </property>
             </widget>
            </item>
-           <item row="1" column="1">
-            <widget class="QPushButton" name="pushButton_manual">
-             <property name="toolTip">
-              <string>right click to register; only supports single selection</string>
-             </property>
-             <property name="text">
-              <string>&amp;Manual</string>
-             </property>
-             <property name="shortcut">
-              <string>M</string>
-             </property>
-             <property name="checkable">
-              <bool>true</bool>
-             </property>
-             <property name="checked">
-              <bool>false</bool>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="1">
-            <widget class="QPushButton" name="pushButton_nearest">
-             <property name="text">
-              <string>&amp;Nearest Vertex</string>
-             </property>
-             <property name="shortcut">
-              <string>N</string>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="0">
-            <widget class="QPushButton" name="pushButton_principal">
-             <property name="text">
-              <string>&amp;Principal Axis</string>
-             </property>
-             <property name="shortcut">
-              <string>P</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="0" colspan="2">
+           <item>
             <widget class="QPushButton" name="pushButton_unregister">
              <property name="text">
               <string>&amp;Unregister</string>
@@ -786,24 +731,62 @@ QMenuBar::item {
            </item>
           </layout>
          </item>
-         <item>
-          <widget class="QPushButton" name="pushButton_register_clear">
-           <property name="text">
-            <string>&amp;Clear Selection</string>
-           </property>
-           <property name="shortcut">
-            <string>C</string>
-           </property>
-          </widget>
+         <item row="3" column="0">
+          <layout class="QGridLayout" name="gridLayout">
+           <item row="0" column="3">
+            <widget class="QSpinBox" name="spinbox_Diameter">
+             <property name="toolTip">
+              <string>Diameter of the normals being averaged around the electrode. </string>
+             </property>
+             <property name="minimum">
+              <number>1</number>
+             </property>
+             <property name="maximum">
+              <number>40</number>
+             </property>
+             <property name="value">
+              <number>25</number>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QLabel" name="label_14">
+             <property name="minimumSize">
+              <size>
+               <width>100</width>
+               <height>27</height>
+              </size>
+             </property>
+             <property name="text">
+              <string>Diameter</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="0" colspan="2">
+            <widget class="QPushButton" name="pushButton_AvgSurfNormal">
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
+             <property name="font">
+              <font>
+               <weight>75</weight>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="toolTip">
+              <string>This projection uses the average surface normals calculated from a diameter around the electrode. </string>
+             </property>
+             <property name="text">
+              <string>Project</string>
+             </property>
+             <property name="shortcut">
+              <string>B</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
          </item>
-         <item>
-          <widget class="Line" name="line_2">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-          </widget>
-         </item>
-         <item>
+         <item row="10" column="0">
           <widget class="QPushButton" name="pushButton_export">
            <property name="text">
             <string>&amp;Export...</string>
@@ -842,9 +825,6 @@ QMenuBar::item {
     <addaction name="actionOpen"/>
     <addaction name="actionOpenPial"/>
     <addaction name="actionOpenProject"/>
-    <addaction name="actionSaveProject"/>
-    <addaction name="actionSaveProjectAs"/>
-    <addaction name="actionRecentProjects"/>
    </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
@@ -962,22 +942,6 @@ QMenuBar::item {
     <hint type="destinationlabel">
      <x>219</x>
      <y>134</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>pushButton_open_ct_dura</sender>
-   <signal>clicked()</signal>
-   <receiver>actionOpen</receiver>
-   <slot>trigger()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>138</x>
-     <y>330</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>-1</x>
-     <y>-1</y>
     </hint>
    </hints>
   </connection>
