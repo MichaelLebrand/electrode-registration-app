@@ -1684,14 +1684,6 @@ class Application(object):
 
         self.currentELectrodeNumber = 1
         while self.labeling:
-            self.segment_selection_model.selectionChanged.connect(electrodeNumberingCallback)
-            col = ComponentItem.prop_map.index('grid_label')
-            for idx in self.label_selection_model.selectedIndexes():
-                info('assigning electrode number %s to component ' % self.currentELectrodeNumber, component.name)
-
-                if idx.column() == col:
-                    self.label_model.setData(idx, self.ui.lineEdit_grid_label.text().strip())
-                    self.label_model.dataChanged.emit(idx, idx)
 
             def electrodeNumberingCallback(selected, deselected):
                 for idx in deselected.indexes():
@@ -1701,9 +1693,19 @@ class Application(object):
                     item = self.segment_model.itemFromIndex(idx)
                     self.toggleComponentNumbering(item, True)
 
-    def toggleComponentNumbering(self, component, select=None):
+        self.segment_selection_model.selectionChanged.connect(electrodeNumberingCallback)
+
+    def toggleComponentNumbering(self, component, select):
         target = component.surface
         target.parent
+
+        col = ComponentItem.prop_map.index('grid_label')
+        for idx in self.label_selection_model.selectedIndexes():
+            info('assigning electrode number %s to component ' % self.currentELectrodeNumber, component.name)
+
+            if idx.column() == col:
+                self.label_model.setData(idx, self.ui.lineEdit_grid_label.text().strip())
+                self.label_model.dataChanged.emit(idx, idx)
         #
         #
         # if isinstance(outline, mayavi.modules.outline.Outline):
