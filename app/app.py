@@ -546,6 +546,7 @@ class Application(object):
     segment_selection_model = None
 
     # UI states
+    labeling = False
     modes = ['free', 'manual add', 'manual register']
     mode = 'free'
 
@@ -614,6 +615,7 @@ class Application(object):
         self.label_model.setSourceModel(self.register_model)
         ui.pushButton_export.clicked.connect(self.export)
         ui.pushButton_assign_grid_label.clicked.connect(self.batch_assign_grid_label)
+        ui.pushButton.clicked.connect(self.startElectrodeLabeling)
 
         # advanced menu
         ui.actionExport_segmentation_dataset.triggered.connect(self.export_segmentation_dataset)
@@ -1146,7 +1148,6 @@ class Application(object):
 
             # set up tree edit selection model
             def segment_model_selection_callback(selected, deselected):
-                # if deselected.empty():
                 for idx in deselected.indexes():
                     item = self.segment_model.itemFromIndex(idx)
                     self.toggle_component_selection(item, False)
@@ -1299,46 +1300,46 @@ class Application(object):
         #self.ui.label_electrode_num.setText(str(self.register_model.rowCount(QtCore.QModelIndex())))
 
 
-    @QtCore.Slot(bool)
-    def manual_add(self, checked):
-        if checked:
-            if self.mode == 'free':
-                self.mode = 'manual add'
-                self.dura_surf.actor.actor.pickable = False
-                info('enter manual add mode')
-            else:
-                self.ui.pushButton_add.setChecked(False)
-        else:
-            self.mode = 'free'
-            self.dura_surf.actor.actor.pickable = True
-            info('leave manual add mode')
+    # @QtCore.Slot(bool)
+    # def manual_add(self, checked):
+    #     if checked:
+    #         if self.mode == 'free':
+    #             self.mode = 'manual add'
+    #             self.dura_surf.actor.actor.pickable = False
+    #             info('enter manual add mode')
+    #         else:
+    #             self.ui.pushButton_add.setChecked(False)
+    #     else:
+    #         self.mode = 'free'
+    #         self.dura_surf.actor.actor.pickable = True
+    #         info('leave manual add mode')
 
 
-    @wrap_get_set_view
-    @QtCore.Slot()
-    def import_from_point_set(self):
-        fns, _ = QtGui.QFileDialog.getOpenFileNames(caption='Select one or more Freesurfer pointset files to import electrodes')
-        info('import electrodes from', fns)
-        n_points = 0
-        for fn in fns:
-            with open(fn) as f:
-                for l in f:
-                    if l[:4] == 'info':
-                        break
-                    xyz = map(float, l.split())
-                    new_component = self.add_electrode(xyz)
-                    n = self.segment_model.root_item.childCount()
-                    self.segment_model.beginInsertRows(QtCore.QModelIndex(), n, n+1)
-
-                    self.pickable_actors[repr(new_component.surface.actor.actor)] = new_component
-                    self.segment_model.root_item.appendChild(new_component)
-
-                    self.segment_model.endInsertRows()
-                    self.register_model.build_index_maps()
-                    n_points += 1
-        self.update_component_count()
-        self.update_electrode_count()
-        info('imported %d electrodes' % n_points)
+    # @wrap_get_set_view
+    # @QtCore.Slot()
+    # def import_from_point_set(self):
+    #     fns, _ = QtGui.QFileDialog.getOpenFileNames(caption='Select one or more Freesurfer pointset files to import electrodes')
+    #     info('import electrodes from', fns)
+    #     n_points = 0
+    #     for fn in fns:
+    #         with open(fn) as f:
+    #             for l in f:
+    #                 if l[:4] == 'info':
+    #                     break
+    #                 xyz = map(float, l.split())
+    #                 new_component = self.add_electrode(xyz)
+    #                 n = self.segment_model.root_item.childCount()
+    #                 self.segment_model.beginInsertRows(QtCore.QModelIndex(), n, n+1)
+    #
+    #                 self.pickable_actors[repr(new_component.surface.actor.actor)] = new_component
+    #                 self.segment_model.root_item.appendChild(new_component)
+    #
+    #                 self.segment_model.endInsertRows()
+    #                 self.register_model.build_index_maps()
+    #                 n_points += 1
+    #     self.update_component_count()
+    #     self.update_electrode_count()
+    #     info('imported %d electrodes' % n_points)
 
 
     def split_voxel(self, voxel, n_piece):
@@ -1677,10 +1678,56 @@ class Application(object):
         info('registered electrode count: %d' % n_registered)
         self.ui.label_register_complete_count.setText(str(n_registered))
 
-    #
-    # def save(self):
-    #
 
+    def startElectrodeLabeling(self):
+        self.labeling = not self.labeling
+
+        self.currentELectrodeNumber = 1
+        while self.labeling:
+            self.segment_selection_model.selectionChanged.connect(electrodeNumberingCallback)
+            col = ComponentItem.prop_map.index('grid_label')
+            for idx in self.label_selection_model.selectedIndexes():
+                info('assigning electrode number %s to component ' % self.currentELectrodeNumber, component.name)
+
+                if idx.column() == col:
+                    self.label_model.setData(idx, self.ui.lineEdit_grid_label.text().strip())
+                    self.label_model.dataChanged.emit(idx, idx)
+
+            def electrodeNumberingCallback(selected, deselected):
+                for idx in deselected.indexes():
+                    item = self.segment_model.itemFromIndex(idx)
+                    self.toggleComponentNumbering(item, False)
+                for idx in selected.indexes():
+                    item = self.segment_model.itemFromIndex(idx)
+                    self.toggleComponentNumbering(item, True)
+
+    def toggleComponentNumbering(self, component, select=None):
+        target = component.surface
+        target.parent
+        #
+        #
+        # if isinstance(outline, mayavi.modules.outline.Outline):
+        #     debug('outline exists')
+        #     if select == None:
+        #         outline.visible = not outline.visible
+        #     else:
+        #         outline.visible = select
+        # elif select == None or select:
+        #     debug('outline does not exist, add new outline')
+        #     ol = Outline()
+        #     self.engine.add_filter(ol, target)
+        #
+        #     ol.actor.actor.pickable = False
+        #
+        #     if isinstance(component, PointComponentItem):
+        #         x, y, z = component.xyz
+        #         ol.manual_bounds = True
+        #         ol.bounds = (x-2, x+2, y-2, y+2, z-2, z+2)
+        #
+        # if outline.visible:
+        #     debug('target is selected')
+        # else:
+        #     debug('target is deselected')
 
     @QtCore.Slot()
     def export(self):

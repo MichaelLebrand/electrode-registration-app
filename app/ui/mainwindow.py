@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'mainwindow.ui'
 #
-# Created: Tue Apr 10 15:52:10 2018
+# Created: Tue Apr 10 18:19:36 2018
 #      by: pyside-uic 0.2.15 running on PySide 1.2.2
 #
 # WARNING! All changes made in this file will be lost!
@@ -274,6 +274,9 @@ class Ui_MainWindow(object):
         self.label_10.setObjectName("label_10")
         self.horizontalLayout_12.addWidget(self.label_10)
         self.verticalLayout_5.addLayout(self.horizontalLayout_12)
+        self.pushButton = QtGui.QPushButton(self.tab_label)
+        self.pushButton.setObjectName("pushButton")
+        self.verticalLayout_5.addWidget(self.pushButton)
         self.horizontalLayout_8 = QtGui.QHBoxLayout()
         self.horizontalLayout_8.setObjectName("horizontalLayout_8")
         self.lineEdit_grid_label = QtGui.QLineEdit(self.tab_label)
@@ -370,7 +373,7 @@ class Ui_MainWindow(object):
         self.label_14.setObjectName("label_14")
         self.gridLayout.addWidget(self.label_14, 0, 2, 1, 1)
         self.pushButton_AvgSurfNormal = QtGui.QPushButton(self.tab_register)
-        self.pushButton_AvgSurfNormal.setEnabled(True)
+        self.pushButton_AvgSurfNormal.setEnabled(False)
         font = QtGui.QFont()
         font.setWeight(75)
         font.setBold(True)
@@ -439,7 +442,7 @@ class Ui_MainWindow(object):
         self.menubar.addAction(self.menuView.menuAction())
 
         self.retranslateUi(MainWindow)
-        self.tabWidget.setCurrentIndex(0)
+        self.tabWidget.setCurrentIndex(2)
         QtCore.QObject.connect(self.horizontalSlider_threshold, QtCore.SIGNAL("sliderMoved(int)"), self.spinBox_threshold.setValue)
         QtCore.QObject.connect(self.spinBox_threshold, QtCore.SIGNAL("valueChanged(int)"), self.horizontalSlider_threshold.setValue)
         QtCore.QObject.connect(self.pushButton_hide_preview, QtCore.SIGNAL("clicked()"), self.actionHideThresholdingPreview.trigger)
@@ -487,6 +490,7 @@ class Ui_MainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_edit), QtGui.QApplication.translate("MainWindow", "Edit", None, QtGui.QApplication.UnicodeUTF8))
         self.label_label_select_count.setText(QtGui.QApplication.translate("MainWindow", "0", None, QtGui.QApplication.UnicodeUTF8))
         self.label_10.setText(QtGui.QApplication.translate("MainWindow", "Selected", None, QtGui.QApplication.UnicodeUTF8))
+        self.pushButton.setText(QtGui.QApplication.translate("MainWindow", "Start Electrode Numbering", None, QtGui.QApplication.UnicodeUTF8))
         self.pushButton_assign_grid_label.setText(QtGui.QApplication.translate("MainWindow", "&Assign Grid Label", None, QtGui.QApplication.UnicodeUTF8))
         self.pushButton_assign_grid_label.setShortcut(QtGui.QApplication.translate("MainWindow", "A", None, QtGui.QApplication.UnicodeUTF8))
         self.pushButton_label_clear.setText(QtGui.QApplication.translate("MainWindow", "&Clear Selection", None, QtGui.QApplication.UnicodeUTF8))
