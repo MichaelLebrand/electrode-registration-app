@@ -147,6 +147,7 @@ dependencies:
   - jupyter-client==5.2.3
   - jupyter-core==4.4.0
   - nilearn==0.4.1
+  - nipy==0.4.1
   - niwidgets==0.1.4
   - notebook==5.4.1
   - pandas==0.22.0

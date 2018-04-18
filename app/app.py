@@ -21,6 +21,7 @@
 import sys, os, traceback, json, csv
 from os import path
 import copy
+import scipy
 
 os.environ['ETS_TOOLKIT'] = 'qt4'
 
@@ -92,23 +93,23 @@ class MayaviQWidget(QtGui.QWidget):
 
 
 class ComponentItem(object):
-    prop_map = ['name', 'grid_label', 'grid_id', 'channel_number']
+    prop_map = ['name', 'grid_label','channel_number', 'grid_id']
     register_method_color = {}
     editable = {
         'grid_label': {
             'display': 'grid label',
             'set': lambda x: x.upper(),
         },
-        'grid_id': {
-            'display': 'grid id',
-            'set': lambda x: int(x) if x.strip().isdigit() else None,
-        },
         'channel_number': {
             'display': 'channel',
             'set': lambda x: int(x) if x.strip().isdigit() else None,
         },
+        'grid_id': {
+            'display': 'grid id',
+            'set': lambda x: int(x) if x.strip().isdigit() else None,
+        },
     }
-    os.chdir('/Users/michaelleibbrand/git-hub/electrode-registration-app')
+    os.chdir('/home/michael/electrode-registration-app/')
     grid_color_lut = map(lambda rgb: tuple(map(lambda x: x / 255., rgb)), json.load(open('app/brewer-qualitative.strong.12.json')))
     grid_labels = []
 
@@ -281,6 +282,11 @@ class PointComponentItem(ComponentItem):
 
 
 class ComponentModel(QtCore.QAbstractItemModel):
+    '''
+    It seems like this model takes the component (see class ComponentItem) and turns it into a model that will be used
+    by the GUI application (model/view/controller).
+
+    '''
     def __init__(self):
         super(ComponentModel, self).__init__(None)
         self.root_item = ComponentItem(None, None, None, None, None, register_position=(0,0,0), is_electrode=False)
@@ -501,15 +507,15 @@ def save_project():
 
 class Application(object):
     # data source
+    subj_dir = os.environ['SUBJECTS_DIR']
     ct = None
-    ct_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/rCT.nii'
+    # ct_path = '/home/michael/electrode-registration-app/files/rCT.nii'
     dura = None
-    dura_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/rh.sm_outer_dural'
-    mask_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/brainmask.mgz'
+    # dura_path = '/home/michael/electrode-registration-app/files/rh.sm_outer_dural'
+    # mask_path = '/home/michael/electrode-registration-app/files/brainmask.mgz'
 
-    # optional
     pial = None
-    pial_path = '/Users/michaelleibbrand/git-hub/electrode-registration-app/files/rh.pial'
+    # pial_path = '/home/michael/electrode-registration-app/files/rh.pial'
 
     # data
     ct_volume = None
@@ -554,7 +560,7 @@ class Application(object):
     config_dir = path.expanduser(path.join('~', '.electrode_registration'))
     config_path = path.join(config_dir, 'electrode_registration.config.json')
 
-    def __init__(self, ui, mlab, config=None):
+    def __init__(self,subj, hemi, ui, mlab, config=None):
         # load configurations
         if not path.exists(self.config_dir):
             debug('configuration directory %s does not exist' % self.config_dir)
@@ -565,9 +571,14 @@ class Application(object):
             with open(self.config_path, 'rb') as f:
                 # set up parameters from config json
                 debug(json.load(f))
-
+        self.hemi = hemi
+        self.subj = subj
         self.mlab = mlab
         self.ui = ui
+        self.ct_path = os.path.join(self.subj_dir, subj, 'CT', 'rCT.nii')
+        self.dura_path = os.path.join(self.subj_dir, subj, 'surf', '%s.sm_outer_dural' % hemi)
+        self.mask_path = os.path.join(self.subj_dir, subj, 'mri', 'brainmask.nii')
+        self.pial_path = os.path.join(self.subj_dir, subj, 'surf', '%s.pial' % hemi)
 
         # wire up the GUI
         ui.actionOpen.triggered.connect(self.open_ct_dura)
@@ -609,13 +620,14 @@ class Application(object):
         ui.pushButton_AvgSurfNormal.clicked.connect(self.do_register_radius)
         # ui.pushButton_manual.toggled.connect(self.do_register_manual)
         ui.pushButton_unregister.clicked.connect(self.unregister)
+        ui.pushButton_saveElectrodes.clicked.connect(self.saveMat)
 
         # label tab
         self.label_model = QtGui.QSortFilterProxyModel()
         self.label_model.setSourceModel(self.register_model)
         ui.pushButton_export.clicked.connect(self.export)
         ui.pushButton_assign_grid_label.clicked.connect(self.batch_assign_grid_label)
-        ui.pushButton.clicked.connect(self.startElectrodeLabeling)
+        ui.pushButton_electrodeNumbering.clicked.connect(self.startElectrodeLabeling)
 
         # advanced menu
         ui.actionExport_segmentation_dataset.triggered.connect(self.export_segmentation_dataset)
@@ -775,17 +787,14 @@ class Application(object):
             except:
                 debug('no threshold preview to remove')
 
-            # load CT and dura
+            # load CT, dura and brainmask
             self.ct_orig = io.read_nifti(ct_path)
             self.dura = read_surface(dura_path)
-            if '.mgz' in mask_path:
-                mask_ni = mask_path.strip('.mgz') + '.nii'
-                if not os.path.isfile(mask_ni):
-                    os.system('mri_convert %s %s' % (mask_path, mask_ni ))
+            mask_mgz = mask_path.strip('.nii') + '.mgz'
+            if not os.path.isfile(mask_path):
+                os.system('mri_convert %s %s' % (mask_mgz, mask_path))
 
-                self.brainmask = io.read_nifti(mask_ni)
-            else:
-                self.brainmask = io.read_nifti(mask_path)
+            self.brainmask = io.read_nifti(mask_path)
 
             # replace paths
             self.ct_path = ct_path
@@ -1168,6 +1177,7 @@ class Application(object):
             self.register_model.build_index_maps()
             self.ui.listView_register.setModel(self.register_model)
             self.register_selection_model = self.ui.listView_register.selectionModel()
+            self.ui.pushButton_AvgSurfNormal.setEnabled(True)
 
             info('label tab enabled')
             self.ui.tab_label.setEnabled(True)
@@ -1424,7 +1434,6 @@ class Application(object):
         # v = np.zeros((3, 3, 3), dtype='i1')
         # v[1, 1, 1] = 1.
         #return self.create_segment(v, m, 'added')
-        # TODO new type of component with no voxel
         component = PointComponentItem('added %d' % self.register_model.rowCount(QtCore.QModelIndex()), xyz, s.parent.parent, s)
         x, y, z = component.centroid.flatten()
         component.text = self.mlab.text3d(x, y, z, '', scale=2.)
@@ -1510,21 +1519,6 @@ class Application(object):
         f.close()
         return normals
 
-    def get_elecmatrix(self):
-        '''
-        Get the electrode matrix of the centroids of the selected electrodes as an ndarray
-        '''
-        selection = self.register_selection_model.selection()
-        elecmatrix = np.ndarray(shape=(selection.size(),3))
-        i = 0
-        for idx in self.register_selection_model.selectedIndexes():
-            if idx.column() == 0:
-                component = self.segment_model.itemFromIndex(self.register_model.mapToSource(idx))
-                c = component.centroid.reshape(-1)
-                elecmatrix[i] = c
-                i = i + 1
-
-        return elecmatrix
 
     def get_surfaceNormal(self, component, normals, dist = 25):
         '''
@@ -1562,9 +1556,15 @@ class Application(object):
     @QtCore.Slot()
     @wrap_get_set_view
     def do_register_radius(self):
+        '''
+        Register the segments to the dural surface by using an average normal vector projection as discussed in
+        Kubanek & Schalk, 2015.
+        :return: None
+        '''
         info ('registering electrodes with average surface normal')
          # load normals data from file
         normals = self.getNormalsData()
+        # Get allt he selected electrodes from model and register each segment to the dural surface
         for idx in self.register_selection_model.selectedIndexes():
             if idx.column() == 0:
                 component = self.segment_model.itemFromIndex(self.register_model.mapToSource(idx))
@@ -1575,7 +1575,9 @@ class Application(object):
 
                 self.register_electrode(component, to_position, color=(0.2, 0.9, 0.2))
                 component.register_method = 'average surface normal'
-                component.register_dura_vertex_id = 100 #arbitrary
+                component.register_dura_vertex_id = 100 #arbitrary, we don't use this anyways.
+
+        self.ui.pushButton_saveElectrodes.setEnabled(True)
 
 
     @QtCore.Slot()
@@ -1585,6 +1587,7 @@ class Application(object):
         for idx in self.register_selection_model.selectedIndexes():
             if idx.column() == 0:
                 component = self.segment_model.itemFromIndex(self.register_model.mapToSource(idx))
+                # remove the components that make up the projection from the selected registered electrodes
                 if component.dot:
                     component.dot.remove()
                 if component.rod:
@@ -1680,56 +1683,92 @@ class Application(object):
 
 
     def startElectrodeLabeling(self):
+        '''
+        This function will automatically label the electrodes with their respective channel number.
+        After clicking the button, the user will then select the electrode that represents channel 1. He will then click
+        all the electrodes in the correct order untill he/she has reached the final electrode.
+        :return: None
+        '''
+        if not self.labeling:
+            self.ui.pushButton_electrodeNumbering.setText(
+                QtGui.QApplication.translate("MainWindow", "Stop Electrode Numbering", None,
+                                             QtGui.QApplication.UnicodeUTF8))
+        else:
+            self.ui.pushButton_electrodeNumbering.setText(
+                QtGui.QApplication.translate("MainWindow", "Start Electrode Numbering", None,
+                                             QtGui.QApplication.UnicodeUTF8))
         self.labeling = not self.labeling
-
         self.currentELectrodeNumber = 1
-        while self.labeling:
 
-            def electrodeNumberingCallback(selected, deselected):
-                for idx in deselected.indexes():
-                    item = self.segment_model.itemFromIndex(idx)
-                    self.toggleComponentNumbering(item, False)
-                for idx in selected.indexes():
-                    item = self.segment_model.itemFromIndex(idx)
-                    self.toggleComponentNumbering(item, True)
+        def electrodeNumberingCallback(selected, deselected):
+            for idx in deselected.indexes():
+                item = self.segment_model.itemFromIndex(idx)
+                self.toggleComponentNumbering(item, False)
+                break
+            for idx in selected.indexes():
+                item = self.segment_model.itemFromIndex(idx)
+                self.toggleComponentNumbering(item, True)
+                break
 
-        self.segment_selection_model.selectionChanged.connect(electrodeNumberingCallback)
+        if self.labeling:
+            self.segment_selection_model.selectionChanged.connect(electrodeNumberingCallback)
+        else:
+            self.currentELectrodeNumber = None
 
     def toggleComponentNumbering(self, component, select):
         target = component.surface
         target.parent
 
-        col = ComponentItem.prop_map.index('grid_label')
-        for idx in self.label_selection_model.selectedIndexes():
-            info('assigning electrode number %s to component ' % self.currentELectrodeNumber, component.name)
+        col = ComponentItem.prop_map.index('channel_number')
+        if not component._channel_number and select and not self.currentELectrodeNumber == None:
+            selectedComponents = filter(lambda x: x.column() == 2, self.label_selection_model.selectedIndexes())  # filter(lambda x: x.column() == 2, self.label_selection_model.selectedIndexes()):
+            if selectedComponents[-1].column() == col:
+                info('assigning electrode number %s to component ' % self.currentELectrodeNumber, component.name)
+                self.label_model.setData(selectedComponents[-1], unicode(self.currentELectrodeNumber))
+                self.label_model.dataChanged.emit(selectedComponents[-1], selectedComponents[-1])
 
-            if idx.column() == col:
-                self.label_model.setData(idx, self.ui.lineEdit_grid_label.text().strip())
-                self.label_model.dataChanged.emit(idx, idx)
+            self.currentELectrodeNumber = self.currentELectrodeNumber + 1  # .append(self.currentELectrodeNumber[-1] + 1)
+
+        # if component._channel_number and not select and not self.currentELectrodeNumber == None:
+        #     deselectedComponent = self.label_selection_model.currentIndex()
+        #     print deselectedComponent.column()
+        #     if deselectedComponent.column() == col:
+        #         info('assigning electrode number %s to component ' % None, component.name)
+        #         self.label_model.setData(deselectedComponent, unicode(None))
+        #         self.label_model.dataChanged.emit(deselectedComponent, deselectedComponent)
         #
+        #         self.currentELectrodeNumber = self.currentELectrodeNumber - 1  # .append(self.currentELectrodeNumber[-1] + 1)
+
+
+        # elif component._channel_number and select and self.currentELectrodeNumber == None:
+        #     for idx in filter(lambda x: x.column() == 2, self.label_selection_model.selectedIndexes()):  # filter(lambda x: x.column() == 2, self.label_selection_model.selectedIndexes()):
+        #         if idx.column() == col:
+        #             selectedComponents = filter(lambda x: x.column() == 2, self.label_selection_model.selectedIndexes())
+        #             info('assigning electrode number %s to component ' % self.currentELectrodeNumber, component.name)
+        #             self.label_model.setData(selectedComponents[-1], unicode(self.currentELectrodeNumber))
+        #             self.label_model.dataChanged.emit(selectedComponents[-1], selectedComponents[-1])
+
+            # self.currentELectrodeNumber = self.currentELectrodeNumber + 1  # .append(self.currentELectrodeNumber[-1] + 1)
+
+
+        # elif component._channel_number and select:
+        #     for idx in filter(lambda x: x.column() == 2, self.label_selection_model.selectedIndexes()):  # filter(lambda x: x.column() == 2, self.label_selection_model.selectedIndexes()):
+        #         if idx.column() == col:
+        #             selectedComponents = filter(lambda x: x.column() == 2, self.label_selection_model.selectedIndexes())
+        #             info('assigning electrode number %s to component ' % (self.currentELectrodeNumber), component.name)
+        #             self.label_model.setData(selectedComponents[-1], unicode(self.currentELectrodeNumber))
+        #             self.label_model.dataChanged.emit(selectedComponents[-1], selectedComponents[-1])
         #
-        # if isinstance(outline, mayavi.modules.outline.Outline):
-        #     debug('outline exists')
-        #     if select == None:
-        #         outline.visible = not outline.visible
-        #     else:
-        #         outline.visible = select
-        # elif select == None or select:
-        #     debug('outline does not exist, add new outline')
-        #     ol = Outline()
-        #     self.engine.add_filter(ol, target)
-        #
-        #     ol.actor.actor.pickable = False
-        #
-        #     if isinstance(component, PointComponentItem):
-        #         x, y, z = component.xyz
-        #         ol.manual_bounds = True
-        #         ol.bounds = (x-2, x+2, y-2, y+2, z-2, z+2)
-        #
-        # if outline.visible:
-        #     debug('target is selected')
-        # else:
-        #     debug('target is deselected')
+        #     self.currentELectrodeNumber = self.currentELectrodeNumber + 1  # .append(self.currentELectrodeNumber[-1] + 1)
+
+        # elif not select and component._channel_number:
+        #     if component.column() == col:
+        #         selectedComponents = filter(lambda x: x.column() == 2, self.label_selection_model.indexAt(component))
+        #         info('assigning electrode number %s to component ' % None, component.name)
+        #         self.label_model.setData(component, unicode(None))
+        #         self.label_model.dataChanged.emit(selectedComponents[1], selectedComponents[1])
+        #     self.currentELectrodeNumber = self.currentELectrodeNumber - 1
+
 
     @QtCore.Slot()
     def export(self):
@@ -1762,6 +1801,69 @@ class Application(object):
         dialog_ui.pushButton_dat_export.clicked.connect(lambda : self.export_dat(dialog_ui.lineEdit_dat.text(), dialog_ui.checkBox_only_selected.isChecked(), dialog_ui.checkBox_per_grid.isChecked()))
 
         dialog.exec_()
+
+    def saveMat(self):
+        '''
+        This saves the currently selected electrodes in a .mat file in the subj/elecs folder.
+        :return: none
+        '''
+        #TODO: allow saving the DBS leads. Distinction must come from the given electrode label (or volume of segment?).
+        # get length of current selection
+        selectedElectrodes = filter(lambda x: x.column() == 0, self.label_selection_model.selectedIndexes())
+        selectedElectrodesAmount =  selectedElectrodes.__len__()
+
+        # find labeled electrodes to find electrode amount
+        numberedElectrodes = 0
+        for actor in self.pickable_actors:
+            if self.pickable_actors[actor]._channel_number is not None:
+                numberedElectrodes = numberedElectrodes + 1
+
+        # make sure all numbered electrodes get saved / all electrodes are numbered
+        if numberedElectrodes == 0:
+            err('Please enter the electrode channel numbers of the selected electrodes before saving')
+            return
+        elif numberedElectrodes is not selectedElectrodesAmount:
+            err('Please verify that you have selected every numbered electrode and/or numbered every selected electrode.')
+            return
+
+        # put the selected electrodes into a list with all their ComponentItem variables
+        electrodes = map(lambda i: self.segment_model.itemFromIndex(
+            self.register_model.mapToSource(self.label_model.mapToSource(i))),
+                         filter(lambda x: x.column() == 0, self.label_selection_model.selectedIndexes()))
+
+        # Put all values into an ndarray and sort it according to their channel number
+        electrodeAmount = electrodes.__len__()
+        sortedElectrodes = np.zeros(shape=[electrodeAmount,4])
+        for idx in range(electrodeAmount):
+            sortedElectrodes[idx,0] = electrodes[idx].channel_number
+            sortedElectrodes[idx,1:] = electrodes[idx].register_position
+
+        sortedElectrodes=sortedElectrodes[sortedElectrodes[:,0].argsort()]
+        print 'Here are the sorted electrodes: \n'
+        print sortedElectrodes
+
+        #remove channel number
+        sortedElectrodes = sortedElectrodes[:,1:]
+        sortedElectrodesSURF = sortedElectrodes - self.surf2ras[:3, 3]
+        transformationMatrix = self.surf2ras
+
+        # save both the locations in RAS and SurfaceRAS
+        elec_dir = os.path.join(self.subj_dir,self.subj,'elecs','individual_elecs')
+        outfile = 'hd_grid'
+        outfileSURF = 'hd_grid_SURF'
+        outfileTransform = 'transformationMatrixSurf2Ras'
+
+        gridOutfile = os.path.join(elec_dir, '%s.mat' % (outfile))
+        scipy.io.savemat(gridOutfile, {'elecmatrix': sortedElectrodes})
+
+        gridOutfileSURF = os.path.join(elec_dir, '%s.mat' % (outfileSURF))
+        scipy.io.savemat(gridOutfileSURF, {'elecmatrix': sortedElectrodesSURF})
+
+        transformOut = os.path.join(elec_dir, '%s.mat' % (outfileTransform))
+        scipy.io.savemat(transformOut, {'transformationmatrix': outfileTransform})
+
+
+
 
 
     def export_csv(self, fn, only_selected=False):
@@ -1915,10 +2017,16 @@ if __name__ == '__main__':
     ui = Ui_MainWindow()
     ui.setupUi(window)
 
+    # subj = sys.argv[1]
+    # hemi = sys.argv[2]
+    subj = 'DY_043_AL'
+    hemi = 'rh'
+
+
     mayavi_widget = MayaviQWidget()
     window.setCentralWidget(mayavi_widget)
 
-    main = Application(ui=ui, mlab=mayavi_widget.visualization.scene.mlab)
+    main = Application(subj, hemi, ui=ui, mlab=mayavi_widget.visualization.scene.mlab)
 
     window.show()
     window.raise_()
